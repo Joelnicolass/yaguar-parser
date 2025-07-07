@@ -1,0 +1,62 @@
+{
+  "name": "yaguar-sync",
+  "version": "0.1.0",
+  "description": "Servicio automatizado para sincronizar datos entre una base de datos antigua y un sitio WordPress/WooCommerce mediante archivos FTP y conversión de formatos.",
+  "main": "dist/index.js",
+  "scripts": {
+    "dev": "nodemon src/index.ts",
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "start:prod": "pm2 start ecosystem.config.js",
+    "test": "jest",
+    "test:watch": "jest --watch",
+    "lint": "eslint src/**/*.ts",
+    "lint:fix": "eslint src/**/*.ts --fix",
+    "clean": "rimraf dist"
+  },
+  "keywords": [
+    "woocommerce",
+    "sync",
+    "ftp",
+    "xml",
+    "parser",
+    "cron",
+    "typescript"
+  ],
+  "author": "Joel Sartori",
+  "license": "MIT",
+  "dependencies": {
+    "basic-ftp": "^5.0.4",
+    "cors": "^2.8.5",
+    "dayjs": "^1.11.10",
+    "dotenv": "^16.3.1",
+    "express": "^4.18.2",
+    "helmet": "^7.1.0",
+    "node-cron": "^3.0.3",
+    "winston": "^3.11.0",
+    "winston-daily-rotate-file": "^4.7.1",
+    "xml2js": "^0.6.2"
+  },
+  "devDependencies": {
+    "@types/cors": "^2.8.17",
+    "@types/express": "^4.17.21",
+    "@types/jest": "^29.5.8",
+    "@types/node": "^20.10.4",
+    "@types/node-cron": "^3.0.11",
+    "@types/xml2js": "^0.4.14",
+    "@typescript-eslint/eslint-plugin": "^6.13.1",
+    "@typescript-eslint/parser": "^6.13.1",
+    "jest": "^29.7.0",
+    "nodemon": "^3.0.2",
+    "pm2": "^5.3.0",
+    "rimraf": "^5.0.5",
+    "eslint": "^8.54.0",
+    "ts-node": "^10.9.1",
+    "ts-jest": "^29.1.1",
+    "typescript": "^5.3.2"
+  },
+  "engines": {
+    "node": ">=18.0.0",
+    "npm": ">=9.0.0"
+  }
+}
