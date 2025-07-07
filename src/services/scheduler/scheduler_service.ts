@@ -16,6 +16,7 @@ import cron from "node-cron";
 import { config } from "../../config";
 import logger from "../../utils/logger";
 import { SyncController } from "../../controllers/sync_controller";
+import { SyncStatusEnum } from "../../types";
 
 export class SchedulerService {
   private static syncTask: cron.ScheduledTask | null = null;
@@ -179,7 +180,7 @@ export class SchedulerService {
       // Verificar que no haya una sincronización en curso
       const currentStatus = SyncController.getCurrentStatus();
 
-      if (currentStatus.status !== "IDLE") {
+      if (currentStatus.status !== SyncStatusEnum.IDLE) {
         logger.warn("Sincronización automática omitida - proceso en curso", {
           currentStatus: currentStatus.status,
         });
