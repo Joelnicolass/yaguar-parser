@@ -160,7 +160,7 @@ export class NombreController {
 - [ ] Servicio FTP con datos dummy
 - [ ] Parser básico (simulado)
 - [ ] Generador XML básico
-- [ ] Sistema de cron jobs
+- [x] Sistema de cron jobs
 
 ### Fase 3 - API y Monitoreo
 
