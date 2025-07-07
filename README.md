@@ -304,13 +304,3 @@ docker run -p 3000:3000 yaguar-sync
 6. **API**: Crear endpoints de monitoreo
 7. **Testing**: Agregar tests completos
 8. **Deploy**: Subir a Railway
-
-## 🤝 Contribución
-
-Este proyecto sigue un desarrollo iterativo con MVPs incrementales para validar cada componente antes de integrar la siguiente funcionalidad.
-
----
-
-**Fecha de inicio**: Julio 2025  
-**Estado**: En desarrollo inicial  
-**Versión**: 0.1.0
