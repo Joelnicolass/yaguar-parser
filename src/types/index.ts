@@ -1,12 +1,15 @@
+export enum SyncStatusEnum {
+  IDLE = "IDLE",
+  CONNECTING = "CONNECTING",
+  DOWNLOADING = "DOWNLOADING",
+  PARSING = "PARSING",
+  GENERATING = "GENERATING",
+  COMPLETED = "COMPLETED",
+  ERROR = "ERROR",
+}
+
 export interface SyncStatus {
-  status:
-    | "IDLE"
-    | "CONNECTING"
-    | "DOWNLOADING"
-    | "PARSING"
-    | "GENERATING"
-    | "COMPLETED"
-    | "ERROR";
+  status: SyncStatusEnum;
   lastSync?: Date;
   nextSync?: Date;
   message?: string;

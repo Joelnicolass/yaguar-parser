@@ -17,13 +17,13 @@ import dayjs from "dayjs";
 
 import logger from "../utils/logger";
 
-import { SyncStatus, SyncResult } from "../types";
+import { SyncStatus, SyncResult, SyncStatusEnum } from "../types";
 import { config } from "../config";
 
 export class SyncController {
   // Estado global del servicio de sincronización
   private static currentStatus: SyncStatus = {
-    status: "IDLE",
+    status: SyncStatusEnum.IDLE,
     lastSync: undefined,
     nextSync: undefined,
     message: "Servicio iniciado, esperando primera sincronización",
@@ -88,7 +88,7 @@ export class SyncController {
 
       // Simular inicio de sincronización
       SyncController.updateStatus(
-        "CONNECTING",
+        SyncStatusEnum.CONNECTING,
         "Iniciando sincronización manual..."
       );
 
@@ -206,22 +206,25 @@ export class SyncController {
     try {
       // Simular diferentes fases del proceso
       SyncController.updateStatus(
-        "CONNECTING",
+        SyncStatusEnum.CONNECTING,
         "Conectando al servidor FTP..."
       );
       await new Promise((resolve) => setTimeout(resolve, 2000));
 
       SyncController.updateStatus(
-        "DOWNLOADING",
+        SyncStatusEnum.DOWNLOADING,
         "Descargando archivo de respaldo..."
       );
       await new Promise((resolve) => setTimeout(resolve, 3000));
 
-      SyncController.updateStatus("PARSING", "Procesando datos...");
+      SyncController.updateStatus(
+        SyncStatusEnum.PARSING,
+        "Procesando datos..."
+      );
       await new Promise((resolve) => setTimeout(resolve, 2000));
 
       SyncController.updateStatus(
-        "GENERATING",
+        SyncStatusEnum.GENERATING,
         "Generando XML para WooCommerce..."
       );
       await new Promise((resolve) => setTimeout(resolve, 1500));
@@ -231,7 +234,7 @@ export class SyncController {
       const recordsProcessed = Math.floor(Math.random() * 500) + 100;
 
       SyncController.updateStatus(
-        "COMPLETED",
+        SyncStatusEnum.COMPLETED,
         `Sincronización completada: ${recordsProcessed} registros procesados`
       );
 
@@ -255,10 +258,16 @@ export class SyncController {
 
       // Volver a estado IDLE después de 5 segundos
       setTimeout(() => {
-        SyncController.updateStatus("IDLE", "Esperando próxima sincronización");
+        SyncController.updateStatus(
+          SyncStatusEnum.IDLE,
+          "Esperando próxima sincronización"
+        );
       }, 5000);
     } catch (error) {
-      SyncController.updateStatus("ERROR", "Error durante la sincronización");
+      SyncController.updateStatus(
+        SyncStatusEnum.ERROR,
+        "Error durante la sincronización"
+      );
       logger.error("Error en simulación de sincronización:", error);
     }
   }
