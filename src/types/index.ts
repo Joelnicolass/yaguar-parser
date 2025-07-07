@@ -59,6 +59,31 @@ export interface FTPConfig {
   secure: boolean;
 }
 
+export interface SFTPConfig {
+  host: string;
+  user: string;
+  password: string;
+  port: number;
+  remotePath: string;
+  filePattern: string;
+  timeout: number;
+}
+
+export interface SFTPConnectionResult {
+  success: boolean;
+  message: string;
+  error?: string;
+}
+
+export interface SFTPDownloadResult {
+  success: boolean;
+  fileName: string;
+  localPath: string;
+  fileSize: number;
+  downloadTime: number;
+  error?: string;
+}
+
 export interface LogConfig {
   level: string;
   maxSize: string;

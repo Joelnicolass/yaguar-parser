@@ -61,14 +61,23 @@ export class HealthController {
             stop: "/api/scheduler/stop",
             reschedule: "/api/scheduler/reschedule",
           },
+          sftp: {
+            status: "/api/sftp/status",
+            testConnection: "/api/sftp/test-connection",
+            listFiles: "/api/sftp/list-files",
+            downloadLatest: "/api/sftp/download-latest",
+            downloadFile: "/api/sftp/download/:fileName",
+            cleanup: "/api/sftp/cleanup",
+          },
         },
         features: [
           "Sincronización automática diaria",
-          "Descarga desde FTP",
+          "Descarga desde SFTP",
           "Conversión DB → JSON → XML",
           "Compatible con WooCommerce",
           "Sistema de logging avanzado",
           "Cron jobs programables",
+          "Cliente SFTP integrado",
         ],
       });
     } catch (error) {

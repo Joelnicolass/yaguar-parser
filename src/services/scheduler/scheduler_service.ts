@@ -13,11 +13,11 @@
  */
 
 import cron from "node-cron";
+import { config } from "../../config";
 import logger from "../../utils/logger";
 import { SyncController } from "../../controllers/sync_controller";
-import { SyncStatusEnum } from "../../types";
-
-import { config } from "../../config";
+import { SftpService } from "../sftp/sftp_service";
+import { SyncStatus, SyncStatusEnum } from "../../types";
 
 export class SchedulerService {
   private static syncTask: cron.ScheduledTask | null = null;
@@ -203,41 +203,54 @@ export class SchedulerService {
    * Simular sincronización automática (temporal hasta implementar servicios reales)
    */
   private static async triggerAutomaticSync(): Promise<void> {
-    // Esta es una implementación temporal que simula la sincronización
-    // En el futuro esto se reemplazará por llamadas a los servicios reales de FTP, Parser, etc.
+    // Integración real con SFTP en lugar de simulación
 
-    logger.info("🔄 Ejecutando sincronización automática...");
+    logger.info("🔄 Ejecutando sincronización automática con SFTP...");
 
-    // Simular proceso automático similar al manual pero con logging específico
     const startTime = Date.now();
 
     try {
-      // Fase 1: Conectar a FTP
-      logger.info("📡 Conectando al servidor FTP...");
-      await new Promise((resolve) => setTimeout(resolve, 2000));
+      // Fase 1: Conectar y descargar desde SFTP
+      logger.info("📡 Conectando al servidor SFTP...");
+      const downloadResult = await SftpService.downloadLatestFileComplete();
 
-      // Fase 2: Buscar y descargar archivo
-      logger.info("📥 Buscando archivos de respaldo...");
-      await new Promise((resolve) => setTimeout(resolve, 3000));
+      if (!downloadResult.success) {
+        throw new Error(`Error en descarga SFTP: ${downloadResult.error}`);
+      }
 
-      // Fase 3: Procesar datos
-      logger.info("⚙️ Procesando datos del respaldo...");
+      logger.info("✅ Archivo descargado desde SFTP", {
+        fileName: downloadResult.fileName,
+        fileSize: downloadResult.fileSize,
+        downloadTime: downloadResult.downloadTime,
+      });
+
+      // Fase 2: Procesar datos (simulado por ahora)
+      logger.info("⚙️ Procesando datos del archivo descargado...");
       await new Promise((resolve) => setTimeout(resolve, 2500));
 
-      // Fase 4: Generar XML
+      // Fase 3: Generar XML (simulado por ahora)
       logger.info("📄 Generando XML para WooCommerce...");
       await new Promise((resolve) => setTimeout(resolve, 1500));
+
+      // Fase 4: Limpieza de archivos temporales
+      logger.info("🗑️ Limpiando archivos temporales...");
+      await SftpService.cleanupTempFiles(1); // Limpiar archivos más antiguos que 1 hora
 
       const duration = Date.now() - startTime;
       const recordsProcessed = Math.floor(Math.random() * 800) + 200;
 
-      logger.info("✅ Sincronización automática completada exitosamente", {
-        duration: `${duration}ms`,
-        recordsProcessed,
-        type: "automatic",
-      });
+      logger.info(
+        "✅ Sincronización automática con SFTP completada exitosamente",
+        {
+          duration: `${duration}ms`,
+          recordsProcessed,
+          fileName: downloadResult.fileName,
+          fileSize: downloadResult.fileSize,
+          type: "automatic-sftp",
+        }
+      );
     } catch (error) {
-      logger.error("❌ Error en sincronización automática:", error);
+      logger.error("❌ Error en sincronización automática con SFTP:", error);
       throw error;
     }
   }
