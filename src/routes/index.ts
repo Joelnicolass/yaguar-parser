@@ -8,6 +8,7 @@
 import { Router } from "express";
 import healthRoutes from "./health";
 import syncRoutes from "./sync";
+import schedulerRoutes from "./scheduler";
 
 const router = Router();
 
@@ -16,5 +17,8 @@ router.use("/", healthRoutes);
 
 // Rutas de API para sincronización
 router.use("/api/sync", syncRoutes);
+
+// Rutas de API para scheduler
+router.use("/api/scheduler", schedulerRoutes);
 
 export default router;

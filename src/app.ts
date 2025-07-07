@@ -7,11 +7,13 @@
  * - helmet: Middleware de seguridad que configura varios headers HTTP
  * - dotenv: Carga variables de entorno desde archivo .env (via config)
  * - winston: Librería de logging avanzada con múltiples transportes (via logger)
+ * - node-cron: Sistema de tareas programadas (via SchedulerService)
  *
  * Este archivo configura:
  * - Middlewares de seguridad y parsing
  * - Sistema de logging para requests
  * - Rutas modulares de la aplicación
+ * - Sistema de cron jobs automático
  * - Manejo global de errores
  * - Configuración del servidor
  */
@@ -19,10 +21,10 @@
 import express, { Request, Response, NextFunction } from "express";
 import cors from "cors";
 import helmet from "helmet";
+import { config } from "./config";
 import logger from "./utils/logger";
 import routes from "./routes";
-
-import { config } from "./config";
+import { SchedulerService } from "./services/scheduler/scheduler_service";
 
 const app = express();
 
@@ -72,6 +74,19 @@ app.use("*", (req, res) => {
   });
 });
 
+// Manejo de señales de terminación
+process.on("SIGTERM", () => {
+  logger.info("SIGTERM recibido, cerrando servidor...");
+  SchedulerService.destroy();
+  process.exit(0);
+});
+
+process.on("SIGINT", () => {
+  logger.info("SIGINT recibido, cerrando servidor...");
+  SchedulerService.destroy();
+  process.exit(0);
+});
+
 // Iniciar servidor
 const startServer = async () => {
   try {
@@ -85,23 +100,24 @@ const startServer = async () => {
       logger.info(
         `🔄 Sync status: http://localhost:${config.server.port}/api/sync/status`
       );
+      logger.info(
+        `⏰ Scheduler status: http://localhost:${config.server.port}/api/scheduler/status`
+      );
+
+      // Inicializar el scheduler después de que el servidor esté listo
+      try {
+        SchedulerService.initialize();
+        SchedulerService.start();
+        logger.info("✅ Sistema de cron jobs inicializado y activado");
+      } catch (error) {
+        logger.error("❌ Error al inicializar sistema de cron jobs:", error);
+      }
     });
   } catch (error) {
     logger.error("Error al iniciar servidor:", error);
     process.exit(1);
   }
 };
-
-// Manejo de señales de terminación
-process.on("SIGTERM", () => {
-  logger.info("SIGTERM recibido, cerrando servidor...");
-  process.exit(0);
-});
-
-process.on("SIGINT", () => {
-  logger.info("SIGINT recibido, cerrando servidor...");
-  process.exit(0);
-});
 
 export { app };
 export default startServer;

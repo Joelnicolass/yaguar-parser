@@ -55,6 +55,12 @@ export class HealthController {
             trigger: "/api/sync/trigger",
             logs: "/api/sync/logs",
           },
+          scheduler: {
+            status: "/api/scheduler/status",
+            start: "/api/scheduler/start",
+            stop: "/api/scheduler/stop",
+            reschedule: "/api/scheduler/reschedule",
+          },
         },
         features: [
           "Sincronización automática diaria",
@@ -62,6 +68,7 @@ export class HealthController {
           "Conversión DB → JSON → XML",
           "Compatible con WooCommerce",
           "Sistema de logging avanzado",
+          "Cron jobs programables",
         ],
       });
     } catch (error) {
