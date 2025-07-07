@@ -13,10 +13,11 @@
  */
 
 import cron from "node-cron";
-import { config } from "../../config";
 import logger from "../../utils/logger";
 import { SyncController } from "../../controllers/sync_controller";
 import { SyncStatusEnum } from "../../types";
+
+import { config } from "../../config";
 
 export class SchedulerService {
   private static syncTask: cron.ScheduledTask | null = null;
