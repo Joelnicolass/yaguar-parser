@@ -90,3 +90,33 @@ export interface LogConfig {
   maxFiles: number;
   dir: string;
 }
+
+/**
+ * Types para el servicio de parser
+ */
+
+export interface ParsedProduct {
+  sku: string;
+  name: string;
+  price: string;
+  stock: string;
+  category: string;
+}
+
+export interface ParserResult {
+  success: boolean;
+  productsCount: number;
+  filePath?: string;
+  outputPath?: string;
+  duration: number;
+  error?: string;
+  products?: ParsedProduct[];
+}
+
+export interface ParserConfig {
+  inputPath: string;
+  outputFormat: "json" | "csv" | "both";
+  outputDir: string;
+  cleanProductNames: boolean;
+  validateData: boolean;
+}

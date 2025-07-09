@@ -17,7 +17,9 @@ import { config } from "../../config";
 import logger from "../../utils/logger";
 import { SyncController } from "../../controllers/sync_controller";
 import { SftpService } from "../sftp/sftp_service";
-import { SyncStatus, SyncStatusEnum } from "../../types";
+import { ParserService } from "../parser/parser_service";
+import { SyncStatusEnum } from "../../types";
+import path from "path";
 
 export class SchedulerService {
   private static syncTask: cron.ScheduledTask | null = null;
@@ -190,9 +192,6 @@ export class SchedulerService {
 
       // Ejecutar sincronización automática
       logger.info("Iniciando sincronización automática programada...");
-
-      // TODO: Aquí se llamará al servicio real de sincronización
-      // Por ahora simulamos llamando al método interno del controlador
       await SchedulerService.triggerAutomaticSync();
     } catch (error) {
       logger.error("Error en tarea de sincronización automática:", error);
@@ -200,18 +199,69 @@ export class SchedulerService {
   }
 
   /**
-   * Simular sincronización automática (temporal hasta implementar servicios reales)
+   * Validar archivo antes del parsing - Enfoque simple y escalable
+   */
+  private static validateFileForParsing(fileName: string): {
+    valid: boolean;
+    reason?: string;
+  } {
+    try {
+      logger.info("🔍 Validando archivo antes del parsing...", { fileName });
+
+      // Validación 1: Extensión del archivo
+      const allowedExtensions = [".asc", ".txt", ".csv"];
+      const fileExt = path.extname(fileName).toLowerCase();
+
+      if (!allowedExtensions.includes(fileExt)) {
+        return {
+          valid: false,
+          reason: `Extensión no permitida: ${fileExt}. Permitidas: ${allowedExtensions.join(
+            ", "
+          )}`,
+        };
+      }
+
+      // Validación 2: Patrón del nombre (ajusta según tus necesidades)
+      const validNamePatterns = [
+        /productos/i, // debe contener "productos"
+        /woocommerce/i, // o "woocommerce"
+        /^db_data/i, // o empezar con "db_data"
+      ];
+
+      const hasValidPattern = validNamePatterns.some((pattern) =>
+        pattern.test(fileName)
+      );
+
+      if (!hasValidPattern) {
+        return {
+          valid: false,
+          reason: `Nombre de archivo no coincide con patrones esperados. Archivo: ${fileName}`,
+        };
+      }
+
+      return { valid: true };
+    } catch (error) {
+      logger.error("Error al validar archivo:", error);
+      return {
+        valid: false,
+        reason: `Error en validación: ${
+          error instanceof Error ? error.message : "Error desconocido"
+        }`,
+      };
+    }
+  }
+
+  /**
+   * Ejecutar sincronización automática completa usando servicios reales
    */
   private static async triggerAutomaticSync(): Promise<void> {
-    // Integración real con SFTP en lugar de simulación
-
-    logger.info("🔄 Ejecutando sincronización automática con SFTP...");
+    logger.info("🔄 Ejecutando sincronización automática completa...");
 
     const startTime = Date.now();
 
     try {
       // Fase 1: Conectar y descargar desde SFTP
-      logger.info("📡 Conectando al servidor SFTP...");
+      logger.info("📡 Fase 1: Conectando al servidor SFTP...");
       const downloadResult = await SftpService.downloadLatestFileComplete();
 
       if (!downloadResult.success) {
@@ -224,33 +274,90 @@ export class SchedulerService {
         downloadTime: downloadResult.downloadTime,
       });
 
-      // Fase 2: Procesar datos (simulado por ahora)
-      logger.info("⚙️ Procesando datos del archivo descargado...");
-      await new Promise((resolve) => setTimeout(resolve, 2500));
+      // Fase de validación: Validar archivo antes del parsing
+      logger.info("🔍 Fase 1.5: Validando archivo descargado...");
 
-      // Fase 3: Generar XML (simulado por ahora)
-      logger.info("📄 Generando XML para WooCommerce...");
-      await new Promise((resolve) => setTimeout(resolve, 1500));
+      if (!downloadResult.fileName) {
+        throw new Error("No se obtuvo el nombre del archivo descargado");
+      }
 
-      // Fase 4: Limpieza de archivos temporales
-      logger.info("🗑️ Limpiando archivos temporales...");
-      await SftpService.cleanupTempFiles(1); // Limpiar archivos más antiguos que 1 hora
+      const validation = SchedulerService.validateFileForParsing(
+        downloadResult.fileName
+      );
+
+      if (!validation.valid) {
+        throw new Error(
+          `Archivo no válido para procesamiento: ${validation.reason}`
+        );
+      }
+
+      logger.info("✅ Archivo validado - Continuando con el procesamiento");
+
+      // Fase 2: Parsear archivo descargado usando ParserService real
+      logger.info("⚙️ Fase 2: Procesando datos del archivo descargado...");
+
+      const parseResult = await ParserService.parseFromTempFile(
+        downloadResult.fileName
+      );
+
+      if (!parseResult.success) {
+        throw new Error(`Error al parsear archivo: ${parseResult.error}`);
+      }
+
+      logger.info("✅ Archivo parseado exitosamente", {
+        productsCount: parseResult.productsCount,
+        outputPath: parseResult.outputPath,
+        duration: parseResult.duration,
+      });
+
+      // Fase 3: Generar estadísticas del procesamiento
+      logger.info("📊 Fase 3: Generando estadísticas del procesamiento...");
+
+      const stats = ParserService.getParsingStats(parseResult.filePath || "");
+
+      logger.info("📈 Estadísticas del procesamiento:", {
+        fileExists: stats.exists,
+        fileSize: stats.size,
+        totalLines: stats.lines,
+        productsProcessed: parseResult.productsCount,
+        lastModified: stats.lastModified,
+      });
+
+      // Fase 4: Limpieza de archivos temporales antiguos
+      logger.info("🗑️ Fase 4: Limpiando archivos temporales...");
+
+      // Limpiar archivos SFTP antiguos (más de 2 horas)
+      await SftpService.cleanupTempFiles(2);
+
+      // Limpiar archivos parseados antiguos (más de 24 horas)
+      await ParserService.cleanupParsedFiles(24);
 
       const duration = Date.now() - startTime;
-      const recordsProcessed = Math.floor(Math.random() * 800) + 200;
 
-      logger.info(
-        "✅ Sincronización automática con SFTP completada exitosamente",
-        {
-          duration: `${duration}ms`,
-          recordsProcessed,
-          fileName: downloadResult.fileName,
-          fileSize: downloadResult.fileSize,
-          type: "automatic-sftp",
-        }
-      );
+      logger.info("✅ Sincronización automática completada exitosamente", {
+        totalDuration: `${duration}ms`,
+        fileName: downloadResult.fileName,
+        fileSize: downloadResult.fileSize,
+        productsProcessed: parseResult.productsCount,
+        outputPath: parseResult.outputPath,
+        type: "automatic-complete",
+        phases: {
+          download: `${downloadResult.downloadTime}ms`,
+          parsing: `${parseResult.duration}ms`,
+          total: `${duration}ms`,
+        },
+      });
+
+      // TODO: Aquí se puede agregar la fase de integración con WooCommerce
+      // cuando tengamos los datos de conexión reales
+      logger.info("🔮 Próxima fase: Integración con WooCommerce (pendiente)");
     } catch (error) {
-      logger.error("❌ Error en sincronización automática con SFTP:", error);
+      const duration = Date.now() - startTime;
+      logger.error("❌ Error en sincronización automática:", {
+        error: error instanceof Error ? error.message : String(error),
+        duration: `${duration}ms`,
+        phase: "automatic-sync",
+      });
       throw error;
     }
   }

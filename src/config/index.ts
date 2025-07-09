@@ -13,7 +13,7 @@
  */
 
 import dotenv from "dotenv";
-import { FTPConfig, SFTPConfig, LogConfig } from "../types";
+import { SFTPConfig, LogConfig } from "../types";
 
 // Cargar variables de entorno
 dotenv.config();
@@ -32,7 +32,7 @@ export const config = {
     password: process.env.SFTP_PASSWORD || "password",
     port: parseInt(process.env.SFTP_PORT || "22"),
     remotePath: process.env.SFTP_REMOTE_PATH || "/",
-    filePattern: process.env.SFTP_FILE_PATTERN || "*.sql",
+    filePattern: process.env.SFTP_FILE_PATTERN || "*.*",
     timeout: parseInt(process.env.SFTP_TIMEOUT || "30000"),
   } as SFTPConfig,
 

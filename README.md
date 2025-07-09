@@ -134,12 +134,16 @@ export class NombreController {
 - Control manual via API (start/stop/reschedule)
 - Logging detallado de ejecuciones
 
-### 3. Parser de Datos
+### 3. Parser de Datos ✅
 
-- Lectura de formatos de base de datos legacy
-- Conversión a JSON estructurado
-- Validación de datos
-- Manejo de errores y datos corruptos
+- Lectura de archivos .asc de base de datos legacy
+- Conversión automática a JSON estructurado para WooCommerce
+- Validación de datos y manejo de errores
+- Soporte para múltiples formatos de salida (JSON/CSV)
+- Procesamiento rápido (300+ productos en ~2ms)
+- API completa para parsing manual y automático
+- Integración directa con descarga SFTP
+- Estadísticas detalladas de procesamiento
 
 ### 4. Generador XML WooCommerce
 
@@ -183,7 +187,7 @@ export class NombreController {
 - [x] Servicio SFTP real con test.rebex.net
 - [x] Integración scheduler + SFTP
 - [x] API REST para control manual
-- [ ] Parser básico para datos legacy
+- [x] Parser completo para datos legacy (.asc → JSON)
 - [ ] Generador XML básico
 
 ### Fase 3 - API y Monitoreo ✅
@@ -272,8 +276,8 @@ SFTP Server → Download → Parse DB → JSON → Transform → XML → WooComm
 
 ### Health & Info
 
-- `GET /` - Información del servicio
-- `GET /health` - Health check
+- `GET /api/health` - Health check del servicio
+- `GET /api/health/info` - Información detallada del servicio
 
 ### Sincronización
 
@@ -297,132 +301,37 @@ SFTP Server → Download → Parse DB → JSON → Transform → XML → WooComm
 - `POST /api/sftp/download/:fileName` - Descargar archivo específico
 - `POST /api/sftp/cleanup` - Limpiar archivos temporales
 
-## 🧪 Testing con Servidor Real
+### Parser ✅
 
-El servicio SFTP ha sido probado exitosamente con el servidor público `test.rebex.net`:
-
-### Configuración de Prueba
-
-```
-Host: test.rebex.net
-Port: 22
-User: demo
-Password: password
-Protocol: SFTP (SSH File Transfer Protocol)
-```
-
-### Resultados de Pruebas
-
-- ✅ **Conexión**: Exitosa en ~1-2 segundos
-- ✅ **Listado**: Obtuvo lista completa de archivos disponibles
-- ✅ **Descarga específica**: `readme.txt` (3,740 bytes) en 1,854ms
-- ✅ **Descarga automática**: Detectó y descargó archivo más reciente
-- ✅ **Limpieza**: Eliminó archivos temporales correctamente
-- ✅ **Integración cron**: Ejecución automática programada funcionando
-
-## 🐳 Docker
-
-### Construcción y Ejecución
-
-```bash
-# Construir imagen
-docker build -t yaguar-sync .
-
-# Ejecutar contenedor
-docker run -p 3000:3000 --env-file .env yaguar-sync
-
-# Ejecutar en modo detached
-docker run -d -p 3000:3000 --name yaguar-sync-container --env-file .env yaguar-sync
-
-# Ver logs del contenedor
-docker logs yaguar-sync-container
-
-# Health check manual
-docker exec yaguar-sync-container curl -f http://localhost:3000/health
-```
-
-### Características del Dockerfile
-
-- **Imagen base**: `node:18-alpine` (ligera y segura)
-- **Zona horaria**: Configurada para Argentina
-- **Usuario no-root**: Mayor seguridad
-- **Health check**: Monitoreo automático del servicio
-- **Multi-stage**: Optimizado para producción
-- **Cache layers**: Build eficiente
-
-## 🚀 Comandos de Desarrollo
-
-```bash
-# Instalación
-npm install
-
-# Desarrollo
-npm run dev
-
-# Build
-npm run build
-
-# Producción
-npm run start
-
-# Producción con PM2
-npm run start:prod
-
-# Tests
-npm test
-
-# Linting
-npm run lint
-
-# Docker local
-docker build -t yaguar-sync .
-docker run -p 3000:3000 yaguar-sync
-```
-
-## 📝 Ejemplos de Uso
-
-### Probar Conexión SFTP
-
-```bash
-curl -X POST http://localhost:3000/api/sftp/test-connection
-```
-
-### Listar Archivos Remotos
-
-```bash
-curl http://localhost:3000/api/sftp/list-files
-```
-
-### Descargar Archivo Más Reciente
-
-```bash
-curl -X POST http://localhost:3000/api/sftp/download-latest
-```
-
-### Controlar Scheduler
-
-```bash
-# Ver estado
-curl http://localhost:3000/api/scheduler/status
-
-# Reprogramar para cada 5 minutos
-curl -X POST http://localhost:3000/api/scheduler/reschedule \
-  -H "Content-Type: application/json" \
-  -d '{"schedule":"*/5 * * * *"}'
-```
-
-### Librerías Principales Utilizadas
-
-- **express**: Framework web para Node.js
-- **ssh2-sftp-client**: Cliente SFTP robusto y seguro
-- **node-cron**: Sistema de tareas programadas
-- **winston**: Logging avanzado con rotación
-- **helmet**: Middlewares de seguridad
-- **cors**: Cross-Origin Resource Sharing
+- `GET /api/parser/parse-example` - Parsear archivo de ejemplo incluido
+- `POST /api/parser/parse-file` - Parsear archivo específico subido
+- `GET /api/parser/parse-from-sftp/:fileName` - Descargar desde SFTP y parsear
+- `GET /api/parser/stats/:fileName` - Estadísticas de archivo parseado
+- `POST /api/parser/cleanup` - Limpiar archivos de parser
+- `GET /api/parser/config` - Configuración del parser
 
 ---
 
 **Fecha de inicio**: Julio 2025  
-**Estado**: SFTP y Scheduler completamente funcionales  
-**Versión**: 0.2.0  
-**Última actualización**: 6 de Julio 2025
+**Estado**: SFTP, Scheduler y Parser completamente funcionales  
+**Versión**: 0.3.0  
+**Última actualización**: 9 de Julio 2025
+
+---
+
+## 🧪 Testing y Desarrollo
+
+### TESTING RAPIDO DEL CORE
+
+```bash
+# Verificar estado del servicio
+curl -X GET http://localhost:3000/api/scheduler/status
+# Parar el scheduler automatico
+curl -X POST http://localhost:3000/api/scheduler/stop
+# Configurar el scheduler automatico con 1 minuto de espera
+curl -X POST http://localhost:3000/api/scheduler/reschedule -H "Content-Type: application/json" -d '{"schedule": "*/1 * * * *"}'
+# Iniciar el scheduler automatico
+curl -X POST http://localhost:3000/api/scheduler/start
+# Verificar estado de sincronización
+curl -X GET http://localhost:3000/api/scheduler/status
+```

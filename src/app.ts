@@ -65,11 +65,14 @@ app.use("*", (req, res) => {
     error: "Ruta no encontrada",
     path: req.originalUrl,
     availableEndpoints: {
-      health: "/health",
-      serviceInfo: "/",
+      health: "/api/health",
+      serviceInfo: "/api/health/info",
       syncStatus: "/api/sync/status",
       syncTrigger: "/api/sync/trigger",
       syncLogs: "/api/sync/logs",
+      schedulerStatus: "/api/scheduler/status",
+      sftpStatus: "/api/sftp/status",
+      parserExample: "/api/parser/parse-example",
     },
   });
 });
@@ -95,7 +98,7 @@ const startServer = async () => {
       logger.info(`📍 Ambiente: ${config.server.nodeEnv}`);
       logger.info(`🕐 Zona horaria: ${config.timezone}`);
       logger.info(
-        `📋 Health check: http://localhost:${config.server.port}/health`
+        `📋 Health check: http://localhost:${config.server.port}/api/health`
       );
       logger.info(
         `🔄 Sync status: http://localhost:${config.server.port}/api/sync/status`

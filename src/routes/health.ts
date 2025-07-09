@@ -10,10 +10,10 @@ import { HealthController } from "../controllers/health_controller";
 
 const router = Router();
 
-// GET /health - Health check del servicio
-router.get("/health", HealthController.getHealth);
+// GET /api/health - Health check del servicio
+router.get("/", HealthController.getHealth);
 
-// GET / - Información básica del servicio
-router.get("/", HealthController.getServiceInfo);
+// GET /api/health/info - Información básica del servicio
+router.get("/info", HealthController.getServiceInfo);
 
 export default router;

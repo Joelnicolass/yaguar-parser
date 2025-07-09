@@ -102,6 +102,7 @@ export class SftpService {
   }> {
     try {
       if (!SftpService.client || !SftpService.isConnected) {
+        logger.error("❌ No hay conexión SFTP activa");
         throw new Error("No hay conexión SFTP activa");
       }
 
@@ -112,23 +113,16 @@ export class SftpService {
 
       const fileList = await SftpService.client.list(config.sftp.remotePath);
 
-      // Filtrar archivos por patrón (simulación básica)
-      const filteredFiles = fileList.filter((file) => {
-        // Para archivos .sql o el patrón configurado
-        if (config.sftp.filePattern === "*.sql") {
-          return file.name.endsWith(".sql");
-        }
-        return true; // Por ahora mostrar todos los archivos
-      });
-
-      logger.info(`📋 Encontrados ${filteredFiles.length} archivos`, {
+      logger.info(`📋 Encontrados ${fileList.length} archivos`, {
+        path: config.sftp.remotePath,
         totalFiles: fileList.length,
-        filteredFiles: filteredFiles.length,
+        fileNames: fileList.map((file) => file.name),
+        filePattern: config.sftp.filePattern,
       });
 
       return {
         success: true,
-        files: filteredFiles,
+        files: fileList,
       };
     } catch (error) {
       const errorMessage =
