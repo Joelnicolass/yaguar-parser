@@ -327,10 +327,10 @@ export class SchedulerService {
       logger.info("🗑️ Fase 4: Limpiando archivos temporales...");
 
       // Limpiar archivos SFTP antiguos (más de 2 horas)
-      await SftpService.cleanupTempFiles(2);
+      //await SftpService.cleanupTempFiles(2);
 
       // Limpiar archivos parseados antiguos (más de 24 horas)
-      await ParserService.cleanupParsedFiles(24);
+      //await ParserService.cleanupParsedFiles(24);
 
       const duration = Date.now() - startTime;
 
