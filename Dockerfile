@@ -7,7 +7,7 @@ ENV TZ=America/Argentina/Buenos_Aires
 
 # Crear usuario no-root para seguridad
 RUN addgroup -g 1001 -S nodejs
-RUN adduser -S nextjs -u 1001
+RUN adduser -S yagarparser -u 1001
 
 # Directorio de trabajo
 WORKDIR /app
@@ -28,8 +28,8 @@ RUN npm run build
 RUN mkdir -p logs temp
 
 # Cambiar ownership de los archivos
-RUN chown -R nextjs:nodejs /app
-USER nextjs
+RUN chown -R yagarparser:nodejs /app
+USER yagarparser
 
 # Puerto de exposición
 EXPOSE 3000
