@@ -224,13 +224,6 @@ SFTP_REMOTE_PATH=/
 SFTP_FILE_PATTERN=*.sql
 SFTP_TIMEOUT=30000
 
-# FTP Configuration (legacy)
-FTP_HOST=ftp.example.com
-FTP_USER=username
-FTP_PASSWORD=password
-FTP_PORT=21
-FTP_SECURE=false
-
 # Cron Schedule
 SYNC_CRON_SCHEDULE=0 3 * * *  # 3:00 AM diario
 

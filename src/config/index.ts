@@ -7,7 +7,6 @@
  * Este archivo centraliza:
  * - Configuración del servidor Express
  * - Configuración del cliente SFTP
- * - Configuración del cliente FTP (legacy)
  * - Configuración del scheduler (cron jobs)
  * - Configuración del sistema de logging
  * - Paths y zona horaria
@@ -36,15 +35,6 @@ export const config = {
     filePattern: process.env.SFTP_FILE_PATTERN || "*.sql",
     timeout: parseInt(process.env.SFTP_TIMEOUT || "30000"),
   } as SFTPConfig,
-
-  // Configuración del FTP (legacy - mantenido para compatibilidad)
-  ftp: {
-    host: process.env.FTP_HOST || "localhost",
-    user: process.env.FTP_USER || "anonymous",
-    password: process.env.FTP_PASSWORD || "",
-    port: parseInt(process.env.FTP_PORT || "21"),
-    secure: process.env.FTP_SECURE === "true",
-  } as FTPConfig,
 
   // Configuración del cron
   scheduler: {
