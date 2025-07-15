@@ -11,6 +11,7 @@ import syncRoutes from "./sync";
 import schedulerRoutes from "./scheduler";
 import sftpRoutes from "./sftp";
 import parserRoutes from "./parser";
+import woocommerceRoutes from "./woocommerce";
 
 const router = Router();
 
@@ -28,5 +29,8 @@ router.use("/api/sftp", sftpRoutes);
 
 // Rutas de API para el parser
 router.use("/api/parser", parserRoutes);
+
+// Rutas de API para WooCommerce
+router.use("/api/woocommerce", woocommerceRoutes);
 
 export default router;
