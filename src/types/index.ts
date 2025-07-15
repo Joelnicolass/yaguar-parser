@@ -120,3 +120,13 @@ export interface ParserConfig {
   cleanProductNames: boolean;
   validateData: boolean;
 }
+
+/**
+ * Types para WooCommerce Controller
+ */
+export interface WooCommerceConfig {
+  url: string;
+  consumerKey: string;
+  consumerSecret: string;
+  version: string;
+}
