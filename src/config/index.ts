@@ -39,6 +39,8 @@ export const config = {
   // Configuración del cron
   scheduler: {
     syncCronSchedule: process.env.SYNC_CRON_SCHEDULE || "0 3 * * *", // 3:00 AM diario
+
+    // syncCronSchedule: process.env.SYNC_CRON_SCHEDULE || "*/1 * * * *", // Cada 1 minuto para testing
   },
 
   // Configuración de logging
@@ -54,9 +56,17 @@ export const config = {
     tempDir: process.env.TEMP_DIR || "./temp",
     logsDir: process.env.LOGS_DIR || "./logs",
   },
+  woocommerce: {
+    url: process.env.WOOCOMMERCE_URL || ,
+    consumerKey: process.env.WOOCOMMERCE_CONSUMER_KEY || "",
+    consumerSecret: process.env.WOOCOMMERCE_CONSUMER_SECRET || "",
+    version: process.env.WOOCOMMERCE_VERSION || "wc/v3",
+  },
 
   // Timezone
   timezone: process.env.TZ || "America/Argentina/Buenos_Aires",
 };
+
+console.log("Config loaded:", config);
 
 export default config;
