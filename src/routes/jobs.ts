@@ -14,7 +14,7 @@ const router = Router();
 router.get("/status/:jobId", (req: Request, res: Response): void => {
   try {
     const { jobId } = req.params;
-    
+
     if (!jobId) {
       res.status(400).json({
         success: false,
@@ -52,7 +52,7 @@ router.get("/status/:jobId", (req: Request, res: Response): void => {
 router.get("/list", (req: Request, res: Response): void => {
   try {
     const jobs = jobController.getAllJobs();
-    
+
     res.json({
       success: true,
       jobs,
@@ -73,7 +73,7 @@ router.get("/list", (req: Request, res: Response): void => {
 router.post("/cleanup", (req: Request, res: Response): void => {
   try {
     const cleanedCount = jobController.cleanupOldJobs();
-    
+
     res.json({
       success: true,
       message: `${cleanedCount} jobs antiguos eliminados`,

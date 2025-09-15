@@ -10,6 +10,10 @@ import { WoocommerceController } from "../controllers/woocommerce_controller";
 import logger from "../utils/logger";
 import config from "../config";
 import { WooCommerceConfig } from "../types";
+import {
+  getAllSucursales,
+  getCredencialesSucursal,
+} from "../config/sucursales_credenciales";
 
 const router = Router();
 
@@ -263,5 +267,221 @@ router.get("/stats", async (req: Request, res: Response) => {
     });
   }
 });
+
+/**
+ * RUTAS MULTI-SUCURSAL
+ */
+
+/**
+ * Obtener lista de todas las sucursales configuradas
+ * GET /api/woocommerce/sucursales
+ */
+router.get("/sucursales", async (req: Request, res: Response) => {
+  try {
+    const sucursales = getAllSucursales();
+
+    // Omitir información sensible como secretos
+    const sucursalesSafe = sucursales.map((sucursal) => ({
+      sucursal_id: sucursal.sucursal_id,
+      nombre: sucursal.nombre,
+      url: sucursal.credenciales.url,
+      // No incluir consumerKey ni consumerSecret por seguridad
+    }));
+
+    res.json({
+      success: true,
+      message: "Sucursales obtenidas exitosamente",
+      data: {
+        totalSucursales: sucursales.length,
+        sucursales: sucursalesSafe,
+      },
+      timestamp: new Date().toISOString(),
+    });
+  } catch (error) {
+    logger.error("Error al obtener sucursales:", error);
+    res.status(500).json({
+      success: false,
+      error: "Error al obtener sucursales",
+      message: error instanceof Error ? error.message : "Error desconocido",
+    });
+  }
+});
+
+/**
+ * Probar conexión con una sucursal específica
+ * GET /api/woocommerce/sucursales/:sucursalId/test-connection
+ */
+router.get(
+  "/sucursales/:sucursalId/test-connection",
+  async (req: Request, res: Response) => {
+    try {
+      const sucursalIdParam = req.params.sucursalId;
+
+      if (!sucursalIdParam) {
+        res.status(400).json({
+          success: false,
+          error: "ID de sucursal requerido",
+        });
+        return;
+      }
+
+      const sucursalId = parseInt(sucursalIdParam);
+
+      if (isNaN(sucursalId)) {
+        res.status(400).json({
+          success: false,
+          error: "ID de sucursal inválido",
+        });
+        return;
+      }
+
+      const wooController = new WoocommerceController(); // Modo multi-sucursal
+
+      const result = await wooController.testConnection(sucursalId);
+
+      if (result.success) {
+        res.json({
+          success: true,
+          message: result.message,
+          sucursalId: sucursalId,
+          storeInfo: result.storeInfo,
+          timestamp: new Date().toISOString(),
+        });
+      } else {
+        res.status(500).json({
+          success: false,
+          error: result.message,
+          sucursalId: sucursalId,
+        });
+      }
+    } catch (error) {
+      logger.error("Error en test de conexión de sucursal:", error);
+      res.status(500).json({
+        success: false,
+        error: "Error al probar conexión con sucursal",
+        message: error instanceof Error ? error.message : "Error desconocido",
+      });
+    }
+  }
+);
+
+/**
+ * Cargar productos desde archivo JSON de sucursal específica
+ * POST /api/woocommerce/sucursales/upload-products
+ */
+router.post(
+  "/sucursales/upload-products",
+  async (req: Request, res: Response) => {
+    try {
+      const { jsonFilePath } = req.body;
+
+      if (!jsonFilePath) {
+        res.status(400).json({
+          success: false,
+          error: "Se requiere la ruta del archivo JSON",
+        });
+        return;
+      }
+
+      const wooController = new WoocommerceController(); // Modo multi-sucursal
+
+      logger.info("Iniciando carga de productos de sucursal via API", {
+        filePath: jsonFilePath,
+      });
+
+      const result = await wooController.uploadProductsFromSucursalJson(
+        jsonFilePath
+      );
+
+      res.json({
+        success: result.success,
+        message: result.success
+          ? "Productos de sucursal cargados exitosamente"
+          : "Error en la carga de productos de sucursal",
+        data: {
+          uploadedCount: result.uploadedCount,
+          failedCount: result.failedCount,
+          duration: result.duration,
+          sucursal_info: result.sucursal_info,
+          errors: result.errors.slice(0, 10), // Solo los primeros 10 errores
+        },
+        timestamp: new Date().toISOString(),
+      });
+    } catch (error) {
+      logger.error("Error en carga de productos de sucursal:", error);
+      res.status(500).json({
+        success: false,
+        error: "Error al cargar productos de sucursal",
+        message: error instanceof Error ? error.message : "Error desconocido",
+      });
+    }
+  }
+);
+
+/**
+ * Obtener productos de una sucursal específica
+ * GET /api/woocommerce/sucursales/:sucursalId/products
+ */
+router.get(
+  "/sucursales/:sucursalId/products",
+  async (req: Request, res: Response) => {
+    try {
+      const sucursalIdParam = req.params.sucursalId;
+
+      if (!sucursalIdParam) {
+        res.status(400).json({
+          success: false,
+          error: "ID de sucursal requerido",
+        });
+        return;
+      }
+
+      const sucursalId = parseInt(sucursalIdParam);
+
+      if (isNaN(sucursalId)) {
+        res.status(400).json({
+          success: false,
+          error: "ID de sucursal inválido",
+        });
+        return;
+      }
+
+      const wooController = new WoocommerceController(); // Modo multi-sucursal
+
+      logger.info("Obteniendo productos de sucursal via API", {
+        sucursalId: sucursalId,
+      });
+
+      const result = await wooController.getAllProducts(sucursalId);
+
+      if (result.success) {
+        res.json({
+          success: true,
+          message: "Productos de sucursal obtenidos exitosamente",
+          data: {
+            sucursalId: sucursalId,
+            totalCount: result.totalCount,
+            products: result.products,
+          },
+          timestamp: new Date().toISOString(),
+        });
+      } else {
+        res.status(500).json({
+          success: false,
+          error: result.error,
+          message: "Error al obtener productos de la sucursal",
+          sucursalId: sucursalId,
+        });
+      }
+    } catch (error) {
+      logger.error("Error al obtener productos de sucursal:", error);
+      res.status(500).json({
+        success: false,
+        error: "Error al obtener productos de sucursal",
+        message: error instanceof Error ? error.message : "Error desconocido",
+      });
+    }
+  }
+);
 
 export default router;

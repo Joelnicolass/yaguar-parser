@@ -380,7 +380,7 @@ export class ParserController {
           return result;
         },
         {
-          operation: 'parse-sucursal',
+          operation: "parse-sucursal",
           filePath: filePath || "default",
           uploadToWoocommerce,
           sucursalId,
@@ -390,13 +390,13 @@ export class ParserController {
       // Responder inmediatamente con el job ID
       res.json({
         success: true,
-        message: "Procesamiento iniciado. Use el jobId para consultar el estado.",
+        message:
+          "Procesamiento iniciado. Use el jobId para consultar el estado.",
         jobId,
         statusUrl: `/api/jobs/status/${jobId}`,
         estimatedTime: "2-5 minutos dependiendo del número de productos",
         timestamp: new Date().toISOString(),
       });
-
     } catch (error) {
       logger.error("Error iniciando parsing asíncrono de sucursal:", error);
       res.status(500).json({

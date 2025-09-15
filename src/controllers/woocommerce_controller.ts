@@ -19,6 +19,12 @@ import path from "path";
 import logger from "../utils/logger";
 import { config } from "../config";
 import { WooCommerceConfig } from "../types";
+import {
+  getCredencialesSucursal,
+  hasSucursalCredenciales,
+  SucursalCredenciales,
+  getSucursalIdByFilename,
+} from "../config/sucursales_credenciales";
 
 // Interfaces para tipado
 interface WooCommerceProduct {
@@ -47,34 +53,370 @@ interface ProductFromJson {
   "Meta: _stock_status": string;
 }
 
+interface SucursalData {
+  sucursal_id: number;
+  nombre_sucursal: string;
+  productos: Array<{
+    sku: number;
+    regular_price: number;
+    description: string;
+    short_description: string;
+    meta_data: number;
+    meta_data_2: string;
+  }>;
+}
+
 export class WoocommerceController {
-  private woocommerce: WooCommerceRestApi;
+  private woocommerceInstances: Map<number, WooCommerceRestApi> = new Map();
+  private defaultWoocommerce?: WooCommerceRestApi;
 
   /**
-   * Constructor - Inicializa la instancia de WooCommerce API
+   * Constructor - Inicializa la instancia por defecto (para compatibilidad hacia atrás)
    */
-  constructor(woocommerceConfig: WooCommerceConfig) {
-    this.woocommerce = new WooCommerceRestApi({
-      url: config.woocommerce.url,
-      consumerKey: config.woocommerce.consumerKey,
-      consumerSecret: config.woocommerce.consumerSecret,
-      version: config.woocommerce.version || ("wc/v3" as any),
+  constructor(woocommerceConfig?: WooCommerceConfig) {
+    if (woocommerceConfig) {
+      this.defaultWoocommerce = new WooCommerceRestApi({
+        url: woocommerceConfig.url,
+        consumerKey: woocommerceConfig.consumerKey,
+        consumerSecret: woocommerceConfig.consumerSecret,
+        version: woocommerceConfig.version || ("wc/v3" as any),
+        axiosConfig: {
+          timeout: 120000, // 2 minutos timeout para operaciones batch
+        },
+      });
+
+      logger.info(
+        "🛒 WooCommerce Controller inicializado (instancia por defecto)",
+        {
+          url: woocommerceConfig.url,
+          version: woocommerceConfig.version,
+        }
+      );
+    } else {
+      logger.info(
+        "🛒 WooCommerce Controller inicializado (modo multi-sucursal)"
+      );
+    }
+  }
+
+  /**
+   * Inicializar instancia de WooCommerce para una sucursal específica
+   */
+  private initializeSucursalInstance(
+    sucursalId: number
+  ): WooCommerceRestApi | null {
+    if (this.woocommerceInstances.has(sucursalId)) {
+      return this.woocommerceInstances.get(sucursalId)!;
+    }
+
+    const credenciales = getCredencialesSucursal(sucursalId);
+    if (!credenciales) {
+      logger.error(
+        `❌ No se encontraron credenciales para sucursal ${sucursalId}`
+      );
+      return null;
+    }
+
+    const wooInstance = new WooCommerceRestApi({
+      url: credenciales.credenciales.url,
+      consumerKey: credenciales.credenciales.consumerKey,
+      consumerSecret: credenciales.credenciales.consumerSecret,
+      version: credenciales.credenciales.version || ("wc/v3" as any),
       axiosConfig: {
         timeout: 120000, // 2 minutos timeout para operaciones batch
       },
     });
 
-    logger.info("🛒 WooCommerce Controller inicializado", {
-      url: config.woocommerce.url,
-      version: config.woocommerce.version,
-    });
+    this.woocommerceInstances.set(sucursalId, wooInstance);
+
+    logger.info(
+      `🛒 Instancia WooCommerce inicializada para sucursal ${credenciales.nombre}`,
+      {
+        sucursal_id: sucursalId,
+        url: credenciales.credenciales.url,
+      }
+    );
+
+    return wooInstance;
   }
 
   /**
-   * Carga completa de productos desde archivo JSON
+   * Obtener instancia de WooCommerce para una sucursal específica
+   */
+  private getWooCommerceInstance(
+    sucursalId?: number
+  ): WooCommerceRestApi | null {
+    if (sucursalId) {
+      return this.initializeSucursalInstance(sucursalId);
+    }
+
+    if (this.defaultWoocommerce) {
+      return this.defaultWoocommerce;
+    }
+
+    logger.error("❌ No hay instancia de WooCommerce disponible");
+    return null;
+  }
+
+  /**
+   * Carga completa de productos desde archivo JSON de sucursal específica
+   * Lee el archivo JSON de una sucursal y sube todos los productos a su instancia de WooCommerce
+   */
+  public async uploadProductsFromSucursalJson(jsonFilePath: string): Promise<{
+    success: boolean;
+    uploadedCount: number;
+    failedCount: number;
+    errors: string[];
+    duration: number;
+    sucursal_info?: { id: number; nombre: string };
+  }> {
+    const startTime = Date.now();
+    let uploadedCount = 0;
+    let failedCount = 0;
+    const errors: string[] = [];
+
+    try {
+      logger.info("🚀 Iniciando carga de productos desde JSON de sucursal", {
+        filePath: jsonFilePath,
+      });
+
+      // Verificar que el archivo existe
+      if (!fs.existsSync(jsonFilePath)) {
+        throw new Error(`Archivo JSON no encontrado: ${jsonFilePath}`);
+      }
+
+      // Leer y parsear el archivo JSON
+      const fileContent = fs.readFileSync(jsonFilePath, "utf-8");
+      const sucursalData: SucursalData = JSON.parse(fileContent);
+
+      const { sucursal_id, nombre_sucursal, productos } = sucursalData;
+
+      logger.info(
+        `📦 Procesando sucursal: ${nombre_sucursal} (ID: ${sucursal_id})`,
+        {
+          totalProductos: productos.length,
+        }
+      );
+
+      // Obtener instancia de WooCommerce para esta sucursal
+      const wooInstance = this.getWooCommerceInstance(sucursal_id);
+      if (!wooInstance) {
+        throw new Error(
+          `No se pudo inicializar WooCommerce para sucursal ${sucursal_id}`
+        );
+      }
+
+      // Procesar productos en lotes para evitar sobrecarga de la API
+      const batchSize = 10;
+      for (let i = 0; i < productos.length; i += batchSize) {
+        const batch = productos.slice(i, i + batchSize);
+
+        // Procesar cada producto del lote
+        const batchPromises = batch.map(async (producto) => {
+          try {
+            const wooProduct =
+              this.convertSucursalProductToWooProduct(producto);
+
+            // Crear producto en WooCommerce de la sucursal
+            const response = await wooInstance.post("products", wooProduct);
+
+            if (response.status === 201) {
+              uploadedCount++;
+              logger.debug(
+                `✅ Producto creado en ${nombre_sucursal}: ${wooProduct.name} (SKU: ${wooProduct.sku})`
+              );
+            } else {
+              failedCount++;
+              errors.push(
+                `Error al crear producto ${wooProduct.sku} en ${nombre_sucursal}: Status ${response.status}`
+              );
+            }
+          } catch (error) {
+            failedCount++;
+            const errorMsg =
+              error instanceof Error ? error.message : "Error desconocido";
+            errors.push(
+              `Error al procesar producto ${producto.sku} en ${nombre_sucursal}: ${errorMsg}`
+            );
+            logger.error(
+              `❌ Error al crear producto ${producto.sku} en ${nombre_sucursal}:`,
+              error
+            );
+          }
+        });
+
+        // Esperar a que termine el lote antes de procesar el siguiente
+        await Promise.all(batchPromises);
+
+        // Pausa breve entre lotes para no sobrecargar la API
+        await new Promise((resolve) => setTimeout(resolve, 500));
+
+        logger.info(
+          `📊 Progreso ${nombre_sucursal}: ${Math.min(
+            i + batchSize,
+            productos.length
+          )}/${productos.length} productos procesados`
+        );
+      }
+
+      const duration = Date.now() - startTime;
+
+      logger.info(`✅ Carga completa finalizada para ${nombre_sucursal}`, {
+        sucursal_id,
+        totalProducts: productos.length,
+        uploadedCount,
+        failedCount,
+        duration: `${duration}ms`,
+      });
+
+      return {
+        success: failedCount === 0,
+        uploadedCount,
+        failedCount,
+        errors,
+        duration,
+        sucursal_info: { id: sucursal_id, nombre: nombre_sucursal },
+      };
+    } catch (error) {
+      const duration = Date.now() - startTime;
+      const errorMessage =
+        error instanceof Error ? error.message : "Error desconocido";
+
+      logger.error("❌ Error en carga de productos de sucursal:", error);
+
+      return {
+        success: false,
+        uploadedCount,
+        failedCount: failedCount + 1,
+        errors: [...errors, errorMessage],
+        duration,
+      };
+    }
+  }
+
+  /**
+   * Procesar múltiples archivos de sucursales
+   */
+  public async uploadProductsFromMultipleSucursales(
+    sucursalFilePaths: string[]
+  ): Promise<{
+    success: boolean;
+    totalUploaded: number;
+    totalFailed: number;
+    sucursalResults: Array<{
+      sucursal_id: number;
+      nombre: string;
+      uploaded: number;
+      failed: number;
+      success: boolean;
+      errors: string[];
+    }>;
+    duration: number;
+  }> {
+    const startTime = Date.now();
+    let totalUploaded = 0;
+    let totalFailed = 0;
+    const sucursalResults: Array<{
+      sucursal_id: number;
+      nombre: string;
+      uploaded: number;
+      failed: number;
+      success: boolean;
+      errors: string[];
+    }> = [];
+
+    logger.info("🏢 Iniciando carga masiva de múltiples sucursales", {
+      totalSucursales: sucursalFilePaths.length,
+    });
+
+    for (const filePath of sucursalFilePaths) {
+      try {
+        const result = await this.uploadProductsFromSucursalJson(filePath);
+
+        totalUploaded += result.uploadedCount;
+        totalFailed += result.failedCount;
+
+        sucursalResults.push({
+          sucursal_id: result.sucursal_info?.id || 0,
+          nombre: result.sucursal_info?.nombre || "Desconocida",
+          uploaded: result.uploadedCount,
+          failed: result.failedCount,
+          success: result.success,
+          errors: result.errors,
+        });
+
+        // Pausa entre sucursales para no sobrecargar
+        await new Promise((resolve) => setTimeout(resolve, 1000));
+      } catch (error) {
+        const errorMsg =
+          error instanceof Error ? error.message : "Error desconocido";
+        logger.error(`❌ Error procesando archivo ${filePath}:`, error);
+
+        sucursalResults.push({
+          sucursal_id: 0,
+          nombre: path.basename(filePath),
+          uploaded: 0,
+          failed: 1,
+          success: false,
+          errors: [errorMsg],
+        });
+        totalFailed++;
+      }
+    }
+
+    const duration = Date.now() - startTime;
+
+    logger.info("✅ Carga masiva de sucursales completada", {
+      totalSucursales: sucursalFilePaths.length,
+      totalUploaded,
+      totalFailed,
+      duration: `${duration}ms`,
+    });
+
+    return {
+      success: totalFailed === 0,
+      totalUploaded,
+      totalFailed,
+      sucursalResults,
+      duration,
+    };
+  }
+
+  /**
+   * Convertir producto de formato sucursal a formato WooCommerce
+   */
+  private convertSucursalProductToWooProduct(producto: {
+    sku: number;
+    regular_price: number;
+    description: string;
+    short_description: string;
+    meta_data: number;
+    meta_data_2: string;
+  }): WooCommerceProduct {
+    return {
+      sku: producto.sku.toString(),
+      name: producto.short_description.trim(),
+      regular_price: producto.regular_price.toString(),
+      stock_quantity: 0, // Se puede ajustar según la lógica de negocio
+      manage_stock: false,
+      stock_status: "instock",
+      categories: [{ name: "General" }], // Categoría por defecto
+      type: "simple",
+      status: "publish",
+      meta_data: [
+        { key: "_meta_data", value: producto.meta_data },
+        { key: "_meta_data_2", value: producto.meta_data_2 },
+      ],
+    };
+  }
+  /**
+   * Carga completa de productos desde archivo JSON (método original para compatibilidad)
    * Lee el archivo JSON generado y sube todos los productos a WooCommerce
    */
-  public async uploadProductsFromJson(jsonFilePath?: string): Promise<{
+  public async uploadProductsFromJson(
+    jsonFilePath?: string,
+    sucursalId?: number
+  ): Promise<{
     success: boolean;
     uploadedCount: number;
     failedCount: number;
@@ -92,11 +434,18 @@ export class WoocommerceController {
 
       logger.info("🚀 Iniciando carga completa de productos desde JSON", {
         filePath,
+        sucursalId: sucursalId || "default",
       });
 
       // Verificar que el archivo existe
       if (!fs.existsSync(filePath)) {
         throw new Error(`Archivo JSON no encontrado: ${filePath}`);
+      }
+
+      // Obtener instancia de WooCommerce
+      const wooInstance = this.getWooCommerceInstance(sucursalId);
+      if (!wooInstance) {
+        throw new Error("No se pudo obtener instancia de WooCommerce");
       }
 
       // Leer y parsear el archivo JSON
@@ -118,10 +467,7 @@ export class WoocommerceController {
             const wooProduct = this.convertJsonToWooProduct(productJson);
 
             // Crear producto en WooCommerce
-            const response = await this.woocommerce.post(
-              "products",
-              wooProduct
-            );
+            const response = await wooInstance.post("products", wooProduct);
 
             if (response.status === 201) {
               uploadedCount++;
@@ -198,7 +544,7 @@ export class WoocommerceController {
    * Actualizar productos comparando con el archivo JSON anterior
    * Compara el último JSON con el anterior y actualiza productos con cambios
    */
-  public async updateProductsFromComparison(): Promise<{
+  public async updateProductsFromComparison(sucursalId?: number): Promise<{
     success: boolean;
     updatedCount: number;
     failedCount: number;
@@ -213,7 +559,15 @@ export class WoocommerceController {
     const errors: string[] = [];
 
     try {
-      logger.info("🔄 Iniciando actualización de productos por comparación");
+      logger.info("🔄 Iniciando actualización de productos por comparación", {
+        sucursalId: sucursalId || "default",
+      });
+
+      // Obtener instancia de WooCommerce
+      const wooInstance = this.getWooCommerceInstance(sucursalId);
+      if (!wooInstance) {
+        throw new Error("No se pudo obtener instancia de WooCommerce");
+      }
 
       // Obtener los dos archivos JSON más recientes
       const jsonFiles = this.getJsonFilesList();
@@ -267,7 +621,7 @@ export class WoocommerceController {
       for (const productJson of changedProducts) {
         try {
           // Buscar el producto en WooCommerce por SKU
-          const searchResponse = await this.woocommerce.get("products", {
+          const searchResponse = await wooInstance.get("products", {
             sku: productJson.SKU,
           });
 
@@ -276,7 +630,7 @@ export class WoocommerceController {
             const updatedProduct = this.convertJsonToWooProduct(productJson);
 
             // Actualizar el producto existente
-            const updateResponse = await this.woocommerce.put(
+            const updateResponse = await wooInstance.put(
               `products/${existingProduct.id}`,
               updatedProduct
             );
@@ -295,7 +649,7 @@ export class WoocommerceController {
           } else {
             // Producto no encontrado en WooCommerce, crear nuevo
             const wooProduct = this.convertJsonToWooProduct(productJson);
-            const createResponse = await this.woocommerce.post(
+            const createResponse = await wooInstance.post(
               "products",
               wooProduct
             );
@@ -369,21 +723,29 @@ export class WoocommerceController {
    * Listar todos los productos de WooCommerce
    * Devuelve todos los productos cargados en la tienda
    */
-  public async getAllProducts(): Promise<{
+  public async getAllProducts(sucursalId?: number): Promise<{
     success: boolean;
     products: WooCommerceProduct[];
     totalCount: number;
     error?: string;
   }> {
     try {
-      logger.info("📋 Obteniendo lista completa de productos de WooCommerce");
+      logger.info("📋 Obteniendo lista completa de productos de WooCommerce", {
+        sucursalId: sucursalId || "default",
+      });
+
+      // Obtener instancia de WooCommerce
+      const wooInstance = this.getWooCommerceInstance(sucursalId);
+      if (!wooInstance) {
+        throw new Error("No se pudo obtener instancia de WooCommerce");
+      }
 
       const allProducts: WooCommerceProduct[] = [];
       let page = 1;
       const perPage = 100; // Máximo permitido por la API
 
       while (true) {
-        const response = await this.woocommerce.get("products", {
+        const response = await wooInstance.get("products", {
           page: page,
           per_page: perPage,
           status: "any", // Incluir todos los estados
@@ -514,15 +876,23 @@ export class WoocommerceController {
   /**
    * Método utilitario para probar la conexión con WooCommerce
    */
-  public async testConnection(): Promise<{
+  public async testConnection(sucursalId?: number): Promise<{
     success: boolean;
     message: string;
     storeInfo?: any;
   }> {
     try {
-      logger.info("🔗 Probando conexión con WooCommerce...");
+      logger.info("🔗 Probando conexión con WooCommerce...", {
+        sucursalId: sucursalId || "default",
+      });
 
-      const response = await this.woocommerce.get("");
+      // Obtener instancia de WooCommerce
+      const wooInstance = this.getWooCommerceInstance(sucursalId);
+      if (!wooInstance) {
+        throw new Error("No se pudo obtener instancia de WooCommerce");
+      }
+
+      const response = await wooInstance.get("");
 
       if (response.status === 200) {
         logger.info("✅ Conexión con WooCommerce exitosa");
@@ -552,7 +922,10 @@ export class WoocommerceController {
    * Crear un producto individual en WooCommerce
    * Método público para uso desde otros servicios
    */
-  public async createSingleProduct(productData: any): Promise<{
+  public async createSingleProduct(
+    productData: any,
+    sucursalId?: number
+  ): Promise<{
     success: boolean;
     productId?: number;
     error?: string;
@@ -562,9 +935,16 @@ export class WoocommerceController {
       logger.debug("🛍️ Creando producto individual en WooCommerce", {
         sku: productData.sku,
         name: productData.name,
+        sucursalId: sucursalId || "default",
       });
 
-      const response = await this.woocommerce.post("products", productData);
+      // Obtener instancia de WooCommerce
+      const wooInstance = this.getWooCommerceInstance(sucursalId);
+      if (!wooInstance) {
+        throw new Error("No se pudo obtener instancia de WooCommerce");
+      }
+
+      const response = await wooInstance.post("products", productData);
 
       if (response.status === 201) {
         logger.debug(
@@ -592,7 +972,8 @@ export class WoocommerceController {
         // Intentar actualizar el producto existente
         const updateResult = await this.updateProductBySku(
           productData.sku,
-          productData
+          productData,
+          sucursalId
         );
         return updateResult;
       }
@@ -610,7 +991,8 @@ export class WoocommerceController {
         delete productDataWithoutImages.images;
 
         const retryResult = await this.createProductWithoutImages(
-          productDataWithoutImages
+          productDataWithoutImages,
+          sucursalId
         );
         return retryResult;
       }
@@ -630,7 +1012,10 @@ export class WoocommerceController {
   /**
    * Crear un producto sin imágenes (fallback para errores de imagen)
    */
-  private async createProductWithoutImages(productData: any): Promise<{
+  private async createProductWithoutImages(
+    productData: any,
+    sucursalId?: number
+  ): Promise<{
     success: boolean;
     productId?: number;
     error?: string;
@@ -640,9 +1025,16 @@ export class WoocommerceController {
       logger.debug("🛍️ Creando producto sin imágenes en WooCommerce", {
         sku: productData.sku,
         name: productData.name,
+        sucursalId: sucursalId || "default",
       });
 
-      const response = await this.woocommerce.post("products", productData);
+      // Obtener instancia de WooCommerce
+      const wooInstance = this.getWooCommerceInstance(sucursalId);
+      if (!wooInstance) {
+        throw new Error("No se pudo obtener instancia de WooCommerce");
+      }
+
+      const response = await wooInstance.post("products", productData);
 
       if (response.status === 201) {
         logger.info(
@@ -669,7 +1061,8 @@ export class WoocommerceController {
 
         const updateResult = await this.updateProductBySku(
           productData.sku,
-          productData
+          productData,
+          sucursalId
         );
         return updateResult;
       }
@@ -693,7 +1086,8 @@ export class WoocommerceController {
    */
   private async updateProductBySku(
     sku: string,
-    productData: any
+    productData: any,
+    sucursalId?: number
   ): Promise<{
     success: boolean;
     productId?: number;
@@ -701,8 +1095,14 @@ export class WoocommerceController {
     action?: "created" | "updated" | "skipped";
   }> {
     try {
+      // Obtener instancia de WooCommerce
+      const wooInstance = this.getWooCommerceInstance(sucursalId);
+      if (!wooInstance) {
+        throw new Error("No se pudo obtener instancia de WooCommerce");
+      }
+
       // Buscar el producto por SKU
-      const existingProducts = await this.woocommerce.get("products", {
+      const existingProducts = await wooInstance.get("products", {
         sku: sku,
         per_page: 1,
       });
@@ -718,7 +1118,7 @@ export class WoocommerceController {
         const updateData = { ...productData };
         delete updateData.sku; // No actualizar el SKU
 
-        const response = await this.woocommerce.put(
+        const response = await wooInstance.put(
           `products/${existingProduct.id}`,
           updateData
         );
@@ -754,8 +1154,14 @@ export class WoocommerceController {
           `⚠️ Error de imagen durante actualización de SKU ${sku}, reintentando sin imágenes...`
         );
 
+        // Obtener instancia de WooCommerce
+        const wooInstance = this.getWooCommerceInstance(sucursalId);
+        if (!wooInstance) {
+          throw new Error("No se pudo obtener instancia de WooCommerce");
+        }
+
         // Buscar el producto nuevamente para actualizar sin imágenes
-        const existingProducts = await this.woocommerce.get("products", {
+        const existingProducts = await wooInstance.get("products", {
           sku: sku,
           per_page: 1,
         });
@@ -768,7 +1174,7 @@ export class WoocommerceController {
           delete updateDataWithoutImages.sku;
           delete updateDataWithoutImages.images;
 
-          const retryResponse = await this.woocommerce.put(
+          const retryResponse = await wooInstance.put(
             `products/${existingProduct.id}`,
             updateDataWithoutImages
           );
@@ -802,7 +1208,10 @@ export class WoocommerceController {
    * Procesar productos en lotes usando el endpoint batch de WooCommerce
    * Mucho más eficiente para operaciones masivas
    */
-  public async processBatchProducts(products: any[]): Promise<{
+  public async processBatchProducts(
+    products: any[],
+    sucursalId?: number
+  ): Promise<{
     success: boolean;
     createdCount: number;
     updatedCount: number;
@@ -817,6 +1226,12 @@ export class WoocommerceController {
     const allErrors: string[] = [];
 
     try {
+      // Obtener instancia de WooCommerce
+      const wooInstance = this.getWooCommerceInstance(sucursalId);
+      if (!wooInstance) {
+        throw new Error("No se pudo obtener instancia de WooCommerce");
+      }
+
       const batchSize = 50; // Reducir tamaño para evitar timeouts
 
       logger.info(
@@ -824,10 +1239,11 @@ export class WoocommerceController {
         {
           totalProducts: products.length,
           batches: Math.ceil(products.length / batchSize),
+          sucursalId: sucursalId || "default",
         }
       );
 
-      // Procesar productos en lotes de 100
+      // Procesar productos en lotes de 50
       for (let i = 0; i < products.length; i += batchSize) {
         const batch = products.slice(i, i + batchSize);
 
@@ -842,7 +1258,7 @@ export class WoocommerceController {
         );
 
         // Procesar el lote actual
-        const batchResult = await this.processSingleBatch(batch);
+        const batchResult = await this.processSingleBatch(batch, wooInstance);
 
         totalCreated += batchResult.createdCount;
         totalUpdated += batchResult.updatedCount;
@@ -894,7 +1310,10 @@ export class WoocommerceController {
   /**
    * Procesar un lote individual de productos usando batch API
    */
-  private async processSingleBatch(products: any[]): Promise<{
+  private async processSingleBatch(
+    products: any[],
+    wooInstance: WooCommerceRestApi
+  ): Promise<{
     createdCount: number;
     updatedCount: number;
     failedCount: number;
@@ -916,30 +1335,33 @@ export class WoocommerceController {
       const existingProductsMap = new Map();
       try {
         // Obtener todos los SKUs para buscar productos existentes
-        const skus = products.map(p => p.sku);
-        
+        const skus = products.map((p) => p.sku);
+
         // Buscar en lotes pequeños para evitar URLs muy largas
         for (let i = 0; i < skus.length; i += 20) {
           const skuBatch = skus.slice(i, i + 20);
-          
+
           for (const sku of skuBatch) {
             try {
-              const existingResponse = await this.woocommerce.get("products", {
+              const existingResponse = await wooInstance.get("products", {
                 sku: sku,
                 per_page: 1,
               });
-              
+
               if (existingResponse.data && existingResponse.data.length > 0) {
                 existingProductsMap.set(sku, existingResponse.data[0]);
               }
             } catch (searchError) {
-              logger.debug(`No se pudo buscar producto con SKU ${sku}:`, searchError);
+              logger.debug(
+                `No se pudo buscar producto con SKU ${sku}:`,
+                searchError
+              );
             }
           }
-          
+
           // Pequeña pausa entre búsquedas
           if (i + 20 < skus.length) {
-            await new Promise(resolve => setTimeout(resolve, 100));
+            await new Promise((resolve) => setTimeout(resolve, 100));
           }
         }
       } catch (searchError) {
@@ -949,12 +1371,17 @@ export class WoocommerceController {
       // Separar productos en crear vs actualizar basado en productos existentes
       for (const product of products) {
         const existingProduct = existingProductsMap.get(product.sku);
-        
+
         if (existingProduct) {
           // Producto existe, preparar para actualización
-          const updateData = this.prepareProductForBatchUpdate(product, existingProduct.id);
+          const updateData = this.prepareProductForBatchUpdate(
+            product,
+            existingProduct.id
+          );
           productsToUpdate.push(updateData);
-          logger.debug(`📝 Producto ${product.sku} marcado para actualización (ID: ${existingProduct.id})`);
+          logger.debug(
+            `📝 Producto ${product.sku} marcado para actualización (ID: ${existingProduct.id})`
+          );
         } else {
           // Producto no existe, preparar para creación
           const createData = this.prepareProductForBatch(product);
@@ -970,13 +1397,15 @@ export class WoocommerceController {
       // Procesar creaciones
       if (productsToCreate.length > 0) {
         try {
-          logger.debug(`📤 Enviando lote de ${productsToCreate.length} productos para crear`);
+          logger.debug(
+            `📤 Enviando lote de ${productsToCreate.length} productos para crear`
+          );
 
           const batchData = {
             create: productsToCreate,
           };
 
-          const response = await this.woocommerce.post("products/batch", batchData);
+          const response = await wooInstance.post("products/batch", batchData);
 
           if (response.status === 200) {
             const results = response.data;
@@ -988,12 +1417,22 @@ export class WoocommerceController {
 
                 if (result.id) {
                   createdCount++;
-                  logger.debug(`✅ Producto creado: ${result.name} (SKU: ${result.sku}, ID: ${result.id})`);
+                  logger.debug(
+                    `✅ Producto creado: ${result.name} (SKU: ${result.sku}, ID: ${result.id})`
+                  );
                 } else if (result.error) {
                   failedCount++;
-                  const errorMsg = result.error.message || result.error.code || 'Error desconocido';
-                  errors.push(`Error creando SKU ${originalProduct.sku}: ${errorMsg}`);
-                  logger.warn(`❌ Error creando producto SKU ${originalProduct.sku}:`, result.error);
+                  const errorMsg =
+                    result.error.message ||
+                    result.error.code ||
+                    "Error desconocido";
+                  errors.push(
+                    `Error creando SKU ${originalProduct.sku}: ${errorMsg}`
+                  );
+                  logger.warn(
+                    `❌ Error creando producto SKU ${originalProduct.sku}:`,
+                    result.error
+                  );
                 }
               }
             }
@@ -1008,13 +1447,18 @@ export class WoocommerceController {
       // Procesar actualizaciones
       if (productsToUpdate.length > 0) {
         try {
-          logger.debug(`🔄 Enviando lote de ${productsToUpdate.length} productos para actualizar`);
+          logger.debug(
+            `🔄 Enviando lote de ${productsToUpdate.length} productos para actualizar`
+          );
 
           const updateBatchData = {
             update: productsToUpdate,
           };
 
-          const updateResponse = await this.woocommerce.post("products/batch", updateBatchData);
+          const updateResponse = await wooInstance.post(
+            "products/batch",
+            updateBatchData
+          );
 
           if (updateResponse.status === 200) {
             const updateResults = updateResponse.data;
@@ -1023,10 +1467,15 @@ export class WoocommerceController {
               for (const result of updateResults.update) {
                 if (result.id) {
                   updatedCount++;
-                  logger.debug(`🔄 Producto actualizado: ${result.name} (SKU: ${result.sku}, ID: ${result.id})`);
+                  logger.debug(
+                    `🔄 Producto actualizado: ${result.name} (SKU: ${result.sku}, ID: ${result.id})`
+                  );
                 } else if (result.error) {
                   failedCount++;
-                  const errorMsg = result.error.message || result.error.code || 'Error desconocido';
+                  const errorMsg =
+                    result.error.message ||
+                    result.error.code ||
+                    "Error desconocido";
                   errors.push(`Error actualizando producto: ${errorMsg}`);
                   logger.warn(`❌ Error actualizando producto:`, result.error);
                 }
@@ -1047,7 +1496,8 @@ export class WoocommerceController {
         errors,
       };
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : "Error desconocido";
+      const errorMessage =
+        error instanceof Error ? error.message : "Error desconocido";
       logger.error("❌ Error procesando lote individual:", error);
 
       return {
@@ -1085,10 +1535,10 @@ export class WoocommerceController {
   private prepareProductForBatchUpdate(product: any, productId: number): any {
     // Preparar datos de actualización para batch API
     const updateData = { ...product };
-    
+
     // Campos requeridos para actualización en batch
     updateData.id = productId;
-    
+
     // Remover SKU ya que no se debe actualizar
     delete updateData.sku;
 
@@ -1110,51 +1560,24 @@ export class WoocommerceController {
   }
 
   /**
-   * Preparar producto para operación batch de actualización
-   * Busca el producto existente por SKU y prepara datos para actualización
-   */
-  private async prepareProductForUpdate(product: any): Promise<any | null> {
-    try {
-      // Buscar producto existente por SKU
-      const existingProducts = await this.woocommerce.get("products", {
-        sku: product.sku,
-        per_page: 1,
-      });
-
-      if (existingProducts.data && existingProducts.data.length > 0) {
-        const existingProduct = existingProducts.data[0];
-
-        // Preparar datos de actualización
-        const updateData = { ...product };
-        updateData.id = existingProduct.id; // Requerido para updates en batch
-        delete updateData.sku; // No actualizar SKU
-
-        return updateData;
-      } else {
-        logger.warn(
-          `⚠️ No se encontró producto existente con SKU: ${product.sku}`
-        );
-        return null;
-      }
-    } catch (error) {
-      logger.error(
-        `❌ Error buscando producto existente con SKU ${product.sku}:`,
-        error
-      );
-      return null;
-    }
-  }
-
-  /**
    * Buscar producto por SKU
    */
-  public async findProductBySku(sku: string): Promise<{
+  public async findProductBySku(
+    sku: string,
+    sucursalId?: number
+  ): Promise<{
     success: boolean;
     product?: any;
     error?: string;
   }> {
     try {
-      const response = await this.woocommerce.get("products", { sku });
+      // Obtener instancia de WooCommerce
+      const wooInstance = this.getWooCommerceInstance(sucursalId);
+      if (!wooInstance) {
+        throw new Error("No se pudo obtener instancia de WooCommerce");
+      }
+
+      const response = await wooInstance.get("products", { sku });
 
       if (response.status === 200 && response.data.length > 0) {
         return {

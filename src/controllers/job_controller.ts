@@ -3,12 +3,12 @@
  * Permite ejecutar operaciones de larga duración sin timeouts
  */
 
-import crypto from 'crypto';
-import logger from '../utils/logger';
+import crypto from "crypto";
+import logger from "../utils/logger";
 
 interface JobStatus {
   id: string;
-  status: 'pending' | 'running' | 'completed' | 'failed';
+  status: "pending" | "running" | "completed" | "failed";
   progress: number;
   startTime: Date;
   endTime?: Date;
@@ -23,18 +23,15 @@ class JobController {
   /**
    * Crear un nuevo job y ejecutarlo en background
    */
-  public createJob(
-    jobFunction: () => Promise<any>,
-    metadata?: any
-  ): string {
+  public createJob(jobFunction: () => Promise<any>, metadata?: any): string {
     const jobId = this.generateJobId();
-    
+
     const job: JobStatus = {
       id: jobId,
-      status: 'pending',
+      status: "pending",
       progress: 0,
       startTime: new Date(),
-      metadata
+      metadata,
     };
 
     this.jobs.set(jobId, job);
@@ -42,7 +39,7 @@ class JobController {
     // Ejecutar en background
     this.executeJobInBackground(jobId, jobFunction);
 
-    logger.info('📋 Nuevo job creado', { jobId, metadata });
+    logger.info("📋 Nuevo job creado", { jobId, metadata });
     return jobId;
   }
 
@@ -50,7 +47,7 @@ class JobController {
    * Generar ID único para job
    */
   private generateJobId(): string {
-    return `job_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`;
+    return `job_${Date.now()}_${crypto.randomBytes(4).toString("hex")}`;
   }
 
   /**
@@ -74,7 +71,7 @@ class JobController {
     const job = this.jobs.get(jobId);
     if (job) {
       job.progress = Math.min(100, Math.max(0, progress));
-      job.status = progress >= 100 ? 'completed' : 'running';
+      job.status = progress >= 100 ? "completed" : "running";
       this.jobs.set(jobId, job);
     }
   }
@@ -85,15 +82,15 @@ class JobController {
   public completeJob(jobId: string, result: any): void {
     const job = this.jobs.get(jobId);
     if (job) {
-      job.status = 'completed';
+      job.status = "completed";
       job.progress = 100;
       job.endTime = new Date();
       job.result = result;
       this.jobs.set(jobId, job);
-      
-      logger.info('✅ Job completado', { 
-        jobId, 
-        duration: job.endTime.getTime() - job.startTime.getTime() 
+
+      logger.info("✅ Job completado", {
+        jobId,
+        duration: job.endTime.getTime() - job.startTime.getTime(),
       });
     }
   }
@@ -104,12 +101,12 @@ class JobController {
   public failJob(jobId: string, error: string): void {
     const job = this.jobs.get(jobId);
     if (job) {
-      job.status = 'failed';
+      job.status = "failed";
       job.endTime = new Date();
       job.error = error;
       this.jobs.set(jobId, job);
-      
-      logger.error('❌ Job fallido', { jobId, error });
+
+      logger.error("❌ Job fallido", { jobId, error });
     }
   }
 
@@ -124,13 +121,16 @@ class JobController {
       const job = this.jobs.get(jobId);
       if (!job) return;
 
-      job.status = 'running';
+      job.status = "running";
       this.jobs.set(jobId, job);
 
       const result = await jobFunction();
       this.completeJob(jobId, result);
     } catch (error) {
-      this.failJob(jobId, error instanceof Error ? error.message : String(error));
+      this.failJob(
+        jobId,
+        error instanceof Error ? error.message : String(error)
+      );
     }
   }
 
@@ -142,15 +142,17 @@ class JobController {
     let cleanedCount = 0;
 
     for (const [jobId, job] of this.jobs.entries()) {
-      if (job.startTime < oneHourAgo && 
-          (job.status === 'completed' || job.status === 'failed')) {
+      if (
+        job.startTime < oneHourAgo &&
+        (job.status === "completed" || job.status === "failed")
+      ) {
         this.jobs.delete(jobId);
         cleanedCount++;
       }
     }
 
     if (cleanedCount > 0) {
-      logger.info('🧹 Jobs antiguos limpiados', { count: cleanedCount });
+      logger.info("🧹 Jobs antiguos limpiados", { count: cleanedCount });
     }
 
     return cleanedCount;
