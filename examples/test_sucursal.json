@@ -1,0 +1,30 @@
+{
+  "sucursal_id": 10,
+  "nombre_sucursal": "Autopista - Prueba",
+  "productos": [
+    {
+      "sku": 1,
+      "regular_price": 100.5,
+      "description": "PRODUCTO DE PRUEBA NUMERO 1 - DESCRIPCION COMPLETA",
+      "short_description": "PRODUCTO PRUEBA 1",
+      "meta_data": 12,
+      "meta_data_2": "UNI"
+    },
+    {
+      "sku": 2,
+      "regular_price": 250.75,
+      "description": "PRODUCTO DE PRUEBA NUMERO 2 - OTRA DESCRIPCION",
+      "short_description": "PRODUCTO PRUEBA 2",
+      "meta_data": 15,
+      "meta_data_2": "KGM"
+    },
+    {
+      "sku": 3,
+      "regular_price": 89.99,
+      "description": "PRODUCTO DE PRUEBA NUMERO 3 - TERCER PRODUCTO",
+      "short_description": "PRODUCTO PRUEBA 3",
+      "meta_data": 8,
+      "meta_data_2": "GRM"
+    }
+  ]
+}

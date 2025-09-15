@@ -12,6 +12,7 @@ import schedulerRoutes from "./scheduler";
 import sftpRoutes from "./sftp";
 import parserRoutes from "./parser";
 import woocommerceRoutes from "./woocommerce";
+import jobRoutes from "./jobs";
 
 const router = Router();
 
@@ -32,5 +33,8 @@ router.use("/api/parser", parserRoutes);
 
 // Rutas de API para WooCommerce
 router.use("/api/woocommerce", woocommerceRoutes);
+
+// Rutas de API para jobs asíncronos
+router.use("/api/jobs", jobRoutes);
 
 export default router;

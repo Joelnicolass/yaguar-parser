@@ -13,12 +13,36 @@
  */
 
 import dotenv from "dotenv";
-import { SFTPConfig, LogConfig } from "../types";
+import { SFTPConfig, LogConfig, WooCommerceConfig } from "../types";
 
 // Cargar variables de entorno
 dotenv.config();
 
-export const config = {
+export interface AppConfig {
+  server: {
+    port: number;
+    nodeEnv: string;
+  };
+  sftp: SFTPConfig;
+  scheduler: {
+    syncCronSchedule: string;
+  };
+  logging: LogConfig;
+  paths: {
+    tempDir: string;
+    logsDir: string;
+    sucursalesDir: string;
+  };
+  sucursales: {
+    defaultFilePath: string;
+    autoUploadToWoocommerce: boolean;
+    batchSize: number;
+  };
+  woocommerce: WooCommerceConfig;
+  timezone: string;
+}
+
+export const config: AppConfig = {
   // Configuración del servidor
   server: {
     port: parseInt(process.env.PORT || "3000"),
@@ -55,9 +79,21 @@ export const config = {
   paths: {
     tempDir: process.env.TEMP_DIR || "./temp",
     logsDir: process.env.LOGS_DIR || "./logs",
+    sucursalesDir:
+      process.env.SUCURSALES_DIR || "./examples/yaguar precioswebfull",
+  },
+
+  // Configuración de sucursales
+  sucursales: {
+    defaultFilePath:
+      process.env.SUCURSALES_DEFAULT_FILE ||
+      "./examples/yaguar precioswebfull/webprecautopista.json",
+    autoUploadToWoocommerce:
+      process.env.AUTO_UPLOAD_WOOCOMMERCE === "true" || false,
+    batchSize: parseInt(process.env.WOOCOMMERCE_BATCH_SIZE || "10"),
   },
   woocommerce: {
-    url: process.env.WOOCOMMERCE_URL || ,
+    url: process.env.WOOCOMMERCE_URL || "",
     consumerKey: process.env.WOOCOMMERCE_CONSUMER_KEY || "",
     consumerSecret: process.env.WOOCOMMERCE_CONSUMER_SECRET || "",
     version: process.env.WOOCOMMERCE_VERSION || "wc/v3",

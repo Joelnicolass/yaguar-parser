@@ -60,7 +60,7 @@ export class WoocommerceController {
       consumerSecret: config.woocommerce.consumerSecret,
       version: config.woocommerce.version || ("wc/v3" as any),
       axiosConfig: {
-        timeout: 30000, // 30 segundos timeout
+        timeout: 120000, // 2 minutos timeout para operaciones batch
       },
     });
 
@@ -444,6 +444,7 @@ export class WoocommerceController {
       name: productJson.Name,
       regular_price: productJson["Regular price"],
       stock_quantity: parseInt(productJson.Stock) || 0,
+
       manage_stock: productJson["Meta: _manage_stock"] === "yes",
       stock_status: productJson["Meta: _stock_status"] || "instock",
       categories: [{ name: productJson.Categories || "Sin categoría" }],
@@ -543,6 +544,636 @@ export class WoocommerceController {
       return {
         success: false,
         message: `Error de conexión: ${errorMessage}`,
+      };
+    }
+  }
+
+  /**
+   * Crear un producto individual en WooCommerce
+   * Método público para uso desde otros servicios
+   */
+  public async createSingleProduct(productData: any): Promise<{
+    success: boolean;
+    productId?: number;
+    error?: string;
+    action?: "created" | "updated" | "skipped";
+  }> {
+    try {
+      logger.debug("🛍️ Creando producto individual en WooCommerce", {
+        sku: productData.sku,
+        name: productData.name,
+      });
+
+      const response = await this.woocommerce.post("products", productData);
+
+      if (response.status === 201) {
+        logger.debug(
+          `✅ Producto creado exitosamente: ${productData.name} (ID: ${response.data.id})`
+        );
+
+        return {
+          success: true,
+          productId: response.data.id,
+          action: "created",
+        };
+      } else {
+        return {
+          success: false,
+          error: `Error de API: Status ${response.status}`,
+        };
+      }
+    } catch (error: any) {
+      // Verificar si es un error de SKU duplicado
+      if (error.response?.data?.code === "product_invalid_sku") {
+        logger.warn(
+          `⚠️ SKU ${productData.sku} ya existe, intentando actualizar...`
+        );
+
+        // Intentar actualizar el producto existente
+        const updateResult = await this.updateProductBySku(
+          productData.sku,
+          productData
+        );
+        return updateResult;
+      }
+
+      // Verificar si es un error de imagen inválida
+      if (
+        error.response?.data?.code === "woocommerce_product_invalid_image_id"
+      ) {
+        logger.warn(
+          `⚠️ ID de imagen inválido para producto ${productData.sku}, reintentando sin imágenes...`
+        );
+
+        // Intentar crear el producto sin imágenes
+        const productDataWithoutImages = { ...productData };
+        delete productDataWithoutImages.images;
+
+        const retryResult = await this.createProductWithoutImages(
+          productDataWithoutImages
+        );
+        return retryResult;
+      }
+
+      const errorMessage =
+        error instanceof Error ? error.message : "Error desconocido";
+
+      logger.error(`❌ Error al crear producto ${productData.sku}:`, error);
+
+      return {
+        success: false,
+        error: errorMessage,
+      };
+    }
+  }
+
+  /**
+   * Crear un producto sin imágenes (fallback para errores de imagen)
+   */
+  private async createProductWithoutImages(productData: any): Promise<{
+    success: boolean;
+    productId?: number;
+    error?: string;
+    action?: "created" | "updated" | "skipped";
+  }> {
+    try {
+      logger.debug("🛍️ Creando producto sin imágenes en WooCommerce", {
+        sku: productData.sku,
+        name: productData.name,
+      });
+
+      const response = await this.woocommerce.post("products", productData);
+
+      if (response.status === 201) {
+        logger.info(
+          `✅ Producto creado exitosamente (sin imágenes): ${productData.name} (ID: ${response.data.id})`
+        );
+
+        return {
+          success: true,
+          productId: response.data.id,
+          action: "created",
+        };
+      } else {
+        return {
+          success: false,
+          error: `Error de API: Status ${response.status}`,
+        };
+      }
+    } catch (error: any) {
+      // Si aún hay error de SKU duplicado, intentar actualizar
+      if (error.response?.data?.code === "product_invalid_sku") {
+        logger.warn(
+          `⚠️ SKU ${productData.sku} ya existe durante reintento, actualizando...`
+        );
+
+        const updateResult = await this.updateProductBySku(
+          productData.sku,
+          productData
+        );
+        return updateResult;
+      }
+
+      const errorMessage =
+        error instanceof Error ? error.message : "Error desconocido";
+      logger.error(
+        `❌ Error al crear producto sin imágenes ${productData.sku}:`,
+        error
+      );
+
+      return {
+        success: false,
+        error: errorMessage,
+      };
+    }
+  }
+
+  /**
+   * Actualizar un producto existente por SKU
+   */
+  private async updateProductBySku(
+    sku: string,
+    productData: any
+  ): Promise<{
+    success: boolean;
+    productId?: number;
+    error?: string;
+    action?: "created" | "updated" | "skipped";
+  }> {
+    try {
+      // Buscar el producto por SKU
+      const existingProducts = await this.woocommerce.get("products", {
+        sku: sku,
+        per_page: 1,
+      });
+
+      if (existingProducts.data && existingProducts.data.length > 0) {
+        const existingProduct = existingProducts.data[0];
+
+        logger.info(
+          `🔄 Actualizando producto existente: ${productData.name} (ID: ${existingProduct.id})`
+        );
+
+        // Remover campos que no se deben actualizar
+        const updateData = { ...productData };
+        delete updateData.sku; // No actualizar el SKU
+
+        const response = await this.woocommerce.put(
+          `products/${existingProduct.id}`,
+          updateData
+        );
+
+        if (response.status === 200) {
+          logger.info(
+            `✅ Producto actualizado exitosamente: ${productData.name} (ID: ${existingProduct.id})`
+          );
+
+          return {
+            success: true,
+            productId: existingProduct.id,
+            action: "updated",
+          };
+        } else {
+          return {
+            success: false,
+            error: `Error al actualizar: Status ${response.status}`,
+          };
+        }
+      } else {
+        return {
+          success: false,
+          error: `No se encontró producto con SKU: ${sku}`,
+        };
+      }
+    } catch (error: any) {
+      // Verificar si es un error de imagen inválida durante actualización
+      if (
+        error.response?.data?.code === "woocommerce_product_invalid_image_id"
+      ) {
+        logger.warn(
+          `⚠️ Error de imagen durante actualización de SKU ${sku}, reintentando sin imágenes...`
+        );
+
+        // Buscar el producto nuevamente para actualizar sin imágenes
+        const existingProducts = await this.woocommerce.get("products", {
+          sku: sku,
+          per_page: 1,
+        });
+
+        if (existingProducts.data && existingProducts.data.length > 0) {
+          const existingProduct = existingProducts.data[0];
+
+          // Remover tanto SKU como imágenes
+          const updateDataWithoutImages = { ...productData };
+          delete updateDataWithoutImages.sku;
+          delete updateDataWithoutImages.images;
+
+          const retryResponse = await this.woocommerce.put(
+            `products/${existingProduct.id}`,
+            updateDataWithoutImages
+          );
+
+          if (retryResponse.status === 200) {
+            logger.info(
+              `✅ Producto actualizado exitosamente (sin imágenes): ${productData.name} (ID: ${existingProduct.id})`
+            );
+
+            return {
+              success: true,
+              productId: existingProduct.id,
+              action: "updated",
+            };
+          }
+        }
+      }
+
+      const errorMessage =
+        error instanceof Error ? error.message : "Error desconocido";
+      logger.error(`❌ Error al actualizar producto con SKU ${sku}:`, error);
+
+      return {
+        success: false,
+        error: errorMessage,
+      };
+    }
+  }
+
+  /**
+   * Procesar productos en lotes usando el endpoint batch de WooCommerce
+   * Mucho más eficiente para operaciones masivas
+   */
+  public async processBatchProducts(products: any[]): Promise<{
+    success: boolean;
+    createdCount: number;
+    updatedCount: number;
+    failedCount: number;
+    errors: string[];
+    duration: number;
+  }> {
+    const startTime = Date.now();
+    let totalCreated = 0;
+    let totalUpdated = 0;
+    let totalFailed = 0;
+    const allErrors: string[] = [];
+
+    try {
+      const batchSize = 50; // Reducir tamaño para evitar timeouts
+
+      logger.info(
+        `🚀 Iniciando procesamiento en lotes de ${batchSize} productos`,
+        {
+          totalProducts: products.length,
+          batches: Math.ceil(products.length / batchSize),
+        }
+      );
+
+      // Procesar productos en lotes de 100
+      for (let i = 0; i < products.length; i += batchSize) {
+        const batch = products.slice(i, i + batchSize);
+
+        logger.info(
+          `📦 Procesando lote ${Math.floor(i / batchSize) + 1}/${Math.ceil(
+            products.length / batchSize
+          )}`,
+          {
+            productosEnLote: batch.length,
+            rango: `${i + 1}-${Math.min(i + batchSize, products.length)}`,
+          }
+        );
+
+        // Procesar el lote actual
+        const batchResult = await this.processSingleBatch(batch);
+
+        totalCreated += batchResult.createdCount;
+        totalUpdated += batchResult.updatedCount;
+        totalFailed += batchResult.failedCount;
+        allErrors.push(...batchResult.errors);
+
+        // Pausa entre lotes para no sobrecargar la API
+        if (i + batchSize < products.length) {
+          await new Promise((resolve) => setTimeout(resolve, 2000)); // 2 segundos entre lotes
+        }
+      }
+
+      const duration = Date.now() - startTime;
+
+      logger.info("✅ Procesamiento en lotes completado", {
+        totalProducts: products.length,
+        createdCount: totalCreated,
+        updatedCount: totalUpdated,
+        failedCount: totalFailed,
+        duration: `${duration}ms`,
+      });
+
+      return {
+        success: totalFailed < products.length, // Éxito si no todos fallaron
+        createdCount: totalCreated,
+        updatedCount: totalUpdated,
+        failedCount: totalFailed,
+        errors: allErrors,
+        duration,
+      };
+    } catch (error) {
+      const duration = Date.now() - startTime;
+      const errorMessage =
+        error instanceof Error ? error.message : "Error desconocido";
+
+      logger.error("❌ Error en procesamiento de lotes:", error);
+
+      return {
+        success: false,
+        createdCount: totalCreated,
+        updatedCount: totalUpdated,
+        failedCount: products.length - totalCreated - totalUpdated,
+        errors: [...allErrors, errorMessage],
+        duration,
+      };
+    }
+  }
+
+  /**
+   * Procesar un lote individual de productos usando batch API
+   */
+  private async processSingleBatch(products: any[]): Promise<{
+    createdCount: number;
+    updatedCount: number;
+    failedCount: number;
+    errors: string[];
+  }> {
+    try {
+      // Preparar datos para batch
+      const productsToCreate: any[] = [];
+      const productsToUpdate: any[] = [];
+      const errors: string[] = [];
+
+      // Primera pasada: Intentar identificar productos que necesitan actualización
+      const skuToProductMap = new Map();
+      for (const product of products) {
+        skuToProductMap.set(product.sku, product);
+      }
+
+      // Buscar productos existentes de una vez
+      const existingProductsMap = new Map();
+      try {
+        // Obtener todos los SKUs para buscar productos existentes
+        const skus = products.map(p => p.sku);
+        
+        // Buscar en lotes pequeños para evitar URLs muy largas
+        for (let i = 0; i < skus.length; i += 20) {
+          const skuBatch = skus.slice(i, i + 20);
+          
+          for (const sku of skuBatch) {
+            try {
+              const existingResponse = await this.woocommerce.get("products", {
+                sku: sku,
+                per_page: 1,
+              });
+              
+              if (existingResponse.data && existingResponse.data.length > 0) {
+                existingProductsMap.set(sku, existingResponse.data[0]);
+              }
+            } catch (searchError) {
+              logger.debug(`No se pudo buscar producto con SKU ${sku}:`, searchError);
+            }
+          }
+          
+          // Pequeña pausa entre búsquedas
+          if (i + 20 < skus.length) {
+            await new Promise(resolve => setTimeout(resolve, 100));
+          }
+        }
+      } catch (searchError) {
+        logger.warn("Error buscando productos existentes:", searchError);
+      }
+
+      // Separar productos en crear vs actualizar basado en productos existentes
+      for (const product of products) {
+        const existingProduct = existingProductsMap.get(product.sku);
+        
+        if (existingProduct) {
+          // Producto existe, preparar para actualización
+          const updateData = this.prepareProductForBatchUpdate(product, existingProduct.id);
+          productsToUpdate.push(updateData);
+          logger.debug(`📝 Producto ${product.sku} marcado para actualización (ID: ${existingProduct.id})`);
+        } else {
+          // Producto no existe, preparar para creación
+          const createData = this.prepareProductForBatch(product);
+          productsToCreate.push(createData);
+          logger.debug(`✨ Producto ${product.sku} marcado para creación`);
+        }
+      }
+
+      let createdCount = 0;
+      let updatedCount = 0;
+      let failedCount = 0;
+
+      // Procesar creaciones
+      if (productsToCreate.length > 0) {
+        try {
+          logger.debug(`📤 Enviando lote de ${productsToCreate.length} productos para crear`);
+
+          const batchData = {
+            create: productsToCreate,
+          };
+
+          const response = await this.woocommerce.post("products/batch", batchData);
+
+          if (response.status === 200) {
+            const results = response.data;
+
+            if (results.create) {
+              for (let i = 0; i < results.create.length; i++) {
+                const result = results.create[i];
+                const originalProduct = productsToCreate[i];
+
+                if (result.id) {
+                  createdCount++;
+                  logger.debug(`✅ Producto creado: ${result.name} (SKU: ${result.sku}, ID: ${result.id})`);
+                } else if (result.error) {
+                  failedCount++;
+                  const errorMsg = result.error.message || result.error.code || 'Error desconocido';
+                  errors.push(`Error creando SKU ${originalProduct.sku}: ${errorMsg}`);
+                  logger.warn(`❌ Error creando producto SKU ${originalProduct.sku}:`, result.error);
+                }
+              }
+            }
+          }
+        } catch (error: any) {
+          logger.error("❌ Error en batch create:", error);
+          failedCount += productsToCreate.length;
+          errors.push(`Error en creación batch: ${error.message}`);
+        }
+      }
+
+      // Procesar actualizaciones
+      if (productsToUpdate.length > 0) {
+        try {
+          logger.debug(`🔄 Enviando lote de ${productsToUpdate.length} productos para actualizar`);
+
+          const updateBatchData = {
+            update: productsToUpdate,
+          };
+
+          const updateResponse = await this.woocommerce.post("products/batch", updateBatchData);
+
+          if (updateResponse.status === 200) {
+            const updateResults = updateResponse.data;
+
+            if (updateResults.update) {
+              for (const result of updateResults.update) {
+                if (result.id) {
+                  updatedCount++;
+                  logger.debug(`🔄 Producto actualizado: ${result.name} (SKU: ${result.sku}, ID: ${result.id})`);
+                } else if (result.error) {
+                  failedCount++;
+                  const errorMsg = result.error.message || result.error.code || 'Error desconocido';
+                  errors.push(`Error actualizando producto: ${errorMsg}`);
+                  logger.warn(`❌ Error actualizando producto:`, result.error);
+                }
+              }
+            }
+          }
+        } catch (error: any) {
+          logger.error("❌ Error en batch update:", error);
+          failedCount += productsToUpdate.length;
+          errors.push(`Error en actualización batch: ${error.message}`);
+        }
+      }
+
+      return {
+        createdCount,
+        updatedCount,
+        failedCount,
+        errors,
+      };
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : "Error desconocido";
+      logger.error("❌ Error procesando lote individual:", error);
+
+      return {
+        createdCount: 0,
+        updatedCount: 0,
+        failedCount: products.length,
+        errors: [errorMessage],
+      };
+    }
+  }
+
+  /**
+   * Preparar producto para operación batch de creación
+   */
+  private prepareProductForBatch(product: any): any {
+    // Remover campos que pueden causar problemas en batch
+    const batchProduct = { ...product };
+
+    // Asegurar que las imágenes estén en formato correcto para batch
+    if (batchProduct.images && Array.isArray(batchProduct.images)) {
+      batchProduct.images = batchProduct.images.map((img: any) => ({
+        src: img.src,
+        name: img.name || batchProduct.name,
+        alt: img.alt || batchProduct.name,
+      }));
+    }
+
+    return batchProduct;
+  }
+
+  /**
+   * Preparar producto para operación batch de actualización
+   * Recibe el ID del producto existente directamente
+   */
+  private prepareProductForBatchUpdate(product: any, productId: number): any {
+    // Preparar datos de actualización para batch API
+    const updateData = { ...product };
+    
+    // Campos requeridos para actualización en batch
+    updateData.id = productId;
+    
+    // Remover SKU ya que no se debe actualizar
+    delete updateData.sku;
+
+    // Asegurar que las imágenes estén en formato correcto
+    if (updateData.images && Array.isArray(updateData.images)) {
+      updateData.images = updateData.images.map((img: any) => ({
+        src: img.src,
+        name: img.name || updateData.name,
+        alt: img.alt || updateData.name,
+      }));
+    }
+
+    // Remover campos que no deben actualizarse o pueden causar conflictos
+    delete updateData.date_created;
+    delete updateData.date_modified;
+    delete updateData.permalink;
+
+    return updateData;
+  }
+
+  /**
+   * Preparar producto para operación batch de actualización
+   * Busca el producto existente por SKU y prepara datos para actualización
+   */
+  private async prepareProductForUpdate(product: any): Promise<any | null> {
+    try {
+      // Buscar producto existente por SKU
+      const existingProducts = await this.woocommerce.get("products", {
+        sku: product.sku,
+        per_page: 1,
+      });
+
+      if (existingProducts.data && existingProducts.data.length > 0) {
+        const existingProduct = existingProducts.data[0];
+
+        // Preparar datos de actualización
+        const updateData = { ...product };
+        updateData.id = existingProduct.id; // Requerido para updates en batch
+        delete updateData.sku; // No actualizar SKU
+
+        return updateData;
+      } else {
+        logger.warn(
+          `⚠️ No se encontró producto existente con SKU: ${product.sku}`
+        );
+        return null;
+      }
+    } catch (error) {
+      logger.error(
+        `❌ Error buscando producto existente con SKU ${product.sku}:`,
+        error
+      );
+      return null;
+    }
+  }
+
+  /**
+   * Buscar producto por SKU
+   */
+  public async findProductBySku(sku: string): Promise<{
+    success: boolean;
+    product?: any;
+    error?: string;
+  }> {
+    try {
+      const response = await this.woocommerce.get("products", { sku });
+
+      if (response.status === 200 && response.data.length > 0) {
+        return {
+          success: true,
+          product: response.data[0],
+        };
+      } else {
+        return {
+          success: false,
+          error: "Producto no encontrado",
+        };
+      }
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : "Error desconocido";
+
+      return {
+        success: false,
+        error: errorMessage,
       };
     }
   }

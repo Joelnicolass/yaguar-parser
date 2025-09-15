@@ -103,6 +103,40 @@ export interface ParsedProduct {
   category: string;
 }
 
+// Nuevos tipos para manejar estructura de sucursales
+export interface SucursalProduct {
+  sku: number;
+  regular_price: number;
+  description: string;
+  short_description: string;
+  meta_data: number;
+  meta_data_2: string;
+}
+
+export interface SucursalData {
+  sucursal_id: number;
+  nombre_sucursal: string;
+  productos: SucursalProduct[];
+}
+
+export interface SucursalParserResult {
+  success: boolean;
+  sucursal: {
+    id: number;
+    nombre: string;
+  };
+  productsCount: number;
+  processedProducts: number;
+  failedProducts: number;
+  duration: number;
+  error?: string;
+  woocommerceResults?: {
+    uploadedCount: number;
+    failedCount: number;
+    errors: string[];
+  };
+}
+
 export interface ParserResult {
   success: boolean;
   productsCount: number;

@@ -9,6 +9,7 @@ import { Router, Request, Response } from "express";
 import { WoocommerceController } from "../controllers/woocommerce_controller";
 import logger from "../utils/logger";
 import config from "../config";
+import { WooCommerceConfig } from "../types";
 
 const router = Router();
 

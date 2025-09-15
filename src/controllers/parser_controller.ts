@@ -1,10 +1,11 @@
 /**
- * parser_controller - Controlador para operaciones de parsing de archivos .asc
+ * parser_controller - Controlador para operaciones de parsing de archivos legacy y sucursales
  *
  * Este controlador maneja:
  * - Parsing de archivos .asc legacy
+ * - Parsing de archivos JSON de sucursales
  * - Conversión a formatos JSON y CSV
- * - Parsing de archivos de ejemplo
+ * - Integración directa con WooCommerce
  * - Estadísticas de archivos parseados
  * - Limpieza de archivos temporales
  *
@@ -14,10 +15,12 @@
 
 import { Request, Response } from "express";
 import { ParserService } from "../services/parser/parser_service";
+import { SucursalService } from "../services/sucursal/sucursal_service";
 import { ParserConfig } from "../types";
 import logger from "../utils/logger";
 import path from "path";
 import { config } from "../config";
+import { jobController } from "./job_controller";
 
 export class ParserController {
   /**
@@ -279,6 +282,8 @@ export class ParserController {
             "Validación de datos",
             "Export JSON y CSV",
             "Integración con SFTP",
+            "Parsing de sucursales JSON",
+            "Integración directa con WooCommerce",
           ],
         },
         timestamp: new Date().toISOString(),
@@ -288,6 +293,253 @@ export class ParserController {
       res.status(500).json({
         success: false,
         error: "Error al obtener configuración",
+        message: error instanceof Error ? error.message : "Error desconocido",
+      });
+    }
+  }
+
+  /**
+   * Parsear archivo JSON de sucursal y enviar a WooCommerce
+   * POST /api/parser/parse-sucursal
+   */
+  public static async parseSucursal(
+    req: Request,
+    res: Response
+  ): Promise<void> {
+    try {
+      const { filePath, uploadToWoocommerce = true } = req.body;
+
+      logger.info("Parsing de archivo de sucursal iniciado via API", {
+        filePath: filePath || "default",
+        uploadToWoocommerce,
+      });
+
+      const result = await SucursalService.parseSucursalFile(
+        filePath,
+        uploadToWoocommerce
+      );
+
+      if (result.success) {
+        res.json({
+          success: true,
+          message: uploadToWoocommerce
+            ? "Sucursal parseada y productos enviados a WooCommerce exitosamente"
+            : "Sucursal parseada exitosamente",
+          data: {
+            sucursal: result.sucursal,
+            productsCount: result.productsCount,
+            processedProducts: result.processedProducts,
+            failedProducts: result.failedProducts,
+            duration: result.duration,
+            woocommerceResults: result.woocommerceResults,
+          },
+          timestamp: new Date().toISOString(),
+        });
+      } else {
+        res.status(500).json({
+          success: false,
+          error: "Error al parsear archivo de sucursal",
+          message: result.error,
+          timestamp: new Date().toISOString(),
+        });
+      }
+    } catch (error) {
+      logger.error("Error en parsing de sucursal:", error);
+      res.status(500).json({
+        success: false,
+        error: "Error al parsear archivo de sucursal",
+        message: error instanceof Error ? error.message : "Error desconocido",
+      });
+    }
+  }
+
+  /**
+   * Parsear archivo JSON de sucursal de forma asíncrona (SIN TIMEOUTS)
+   * POST /api/parser/parse-sucursal-async
+   */
+  public static async parseSucursalAsync(
+    req: Request,
+    res: Response
+  ): Promise<void> {
+    try {
+      const { filePath, uploadToWoocommerce = true, sucursalId } = req.body;
+
+      logger.info("Iniciando parsing asíncrono de sucursal", {
+        filePath: filePath || "default",
+        uploadToWoocommerce,
+        sucursalId,
+      });
+
+      // Crear job asíncrono
+      const jobId = jobController.createJob(
+        async () => {
+          const result = await SucursalService.parseSucursalFile(
+            filePath,
+            uploadToWoocommerce
+          );
+          return result;
+        },
+        {
+          operation: 'parse-sucursal',
+          filePath: filePath || "default",
+          uploadToWoocommerce,
+          sucursalId,
+        }
+      );
+
+      // Responder inmediatamente con el job ID
+      res.json({
+        success: true,
+        message: "Procesamiento iniciado. Use el jobId para consultar el estado.",
+        jobId,
+        statusUrl: `/api/jobs/status/${jobId}`,
+        estimatedTime: "2-5 minutos dependiendo del número de productos",
+        timestamp: new Date().toISOString(),
+      });
+
+    } catch (error) {
+      logger.error("Error iniciando parsing asíncrono de sucursal:", error);
+      res.status(500).json({
+        success: false,
+        error: "Error al iniciar procesamiento asíncrono",
+        message: error instanceof Error ? error.message : "Error desconocido",
+      });
+    }
+  }
+
+  /**
+   * Obtener información de una sucursal sin procesar
+   * GET /api/parser/sucursal-info
+   */
+  public static async getSucursalInfo(
+    req: Request,
+    res: Response
+  ): Promise<void> {
+    try {
+      const { filePath } = req.query;
+
+      logger.info("Consultando información de sucursal via API", {
+        filePath: filePath || "default",
+      });
+
+      const result = await SucursalService.getSucursalInfo(filePath as string);
+
+      if (result.success) {
+        res.json({
+          success: true,
+          message: "Información de sucursal obtenida exitosamente",
+          data: result.sucursal,
+          timestamp: new Date().toISOString(),
+        });
+      } else {
+        res.status(404).json({
+          success: false,
+          error: "Error al obtener información de sucursal",
+          message: result.error,
+          timestamp: new Date().toISOString(),
+        });
+      }
+    } catch (error) {
+      logger.error("Error al obtener información de sucursal:", error);
+      res.status(500).json({
+        success: false,
+        error: "Error al obtener información de sucursal",
+        message: error instanceof Error ? error.message : "Error desconocido",
+      });
+    }
+  }
+
+  /**
+   * Listar archivos de sucursales disponibles
+   * GET /api/parser/sucursales-files
+   */
+  public static async listSucursalesFiles(
+    req: Request,
+    res: Response
+  ): Promise<void> {
+    try {
+      logger.info("Listando archivos de sucursales disponibles via API");
+
+      const files = SucursalService.getSucursalesFiles();
+
+      res.json({
+        success: true,
+        message: "Archivos de sucursales obtenidos exitosamente",
+        data: {
+          totalFiles: files.length,
+          files: files.map((file) => ({
+            fullPath: file,
+            fileName: path.basename(file),
+            directory: path.dirname(file),
+          })),
+          defaultFile: config.sucursales.defaultFilePath,
+        },
+        timestamp: new Date().toISOString(),
+      });
+    } catch (error) {
+      logger.error("Error al listar archivos de sucursales:", error);
+      res.status(500).json({
+        success: false,
+        error: "Error al listar archivos de sucursales",
+        message: error instanceof Error ? error.message : "Error desconocido",
+      });
+    }
+  }
+
+  /**
+   * Parsear archivo de sucursal por defecto (acceso rápido)
+   * POST /api/parser/parse-default-sucursal
+   */
+  public static async parseDefaultSucursal(
+    req: Request,
+    res: Response
+  ): Promise<void> {
+    try {
+      const { uploadToWoocommerce = true } = req.body;
+
+      logger.info(
+        "Parsing de archivo de sucursal por defecto iniciado via API",
+        {
+          defaultFile: config.sucursales.defaultFilePath,
+          uploadToWoocommerce,
+        }
+      );
+
+      const result = await SucursalService.parseSucursalFile(
+        config.sucursales.defaultFilePath,
+        uploadToWoocommerce
+      );
+
+      if (result.success) {
+        res.json({
+          success: true,
+          message: uploadToWoocommerce
+            ? "Sucursal por defecto parseada y productos enviados a WooCommerce exitosamente"
+            : "Sucursal por defecto parseada exitosamente",
+          data: {
+            sucursal: result.sucursal,
+            productsCount: result.productsCount,
+            processedProducts: result.processedProducts,
+            failedProducts: result.failedProducts,
+            duration: result.duration,
+            woocommerceResults: result.woocommerceResults,
+            sourceFile: config.sucursales.defaultFilePath,
+          },
+          timestamp: new Date().toISOString(),
+        });
+      } else {
+        res.status(500).json({
+          success: false,
+          error: "Error al parsear archivo de sucursal por defecto",
+          message: result.error,
+          timestamp: new Date().toISOString(),
+        });
+      }
+    } catch (error) {
+      logger.error("Error en parsing de sucursal por defecto:", error);
+      res.status(500).json({
+        success: false,
+        error: "Error al parsear archivo de sucursal por defecto",
         message: error instanceof Error ? error.message : "Error desconocido",
       });
     }
