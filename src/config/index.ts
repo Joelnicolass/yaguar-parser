@@ -55,7 +55,9 @@ export const config: AppConfig = {
     user: process.env.SFTP_USER || "demo",
     password: process.env.SFTP_PASSWORD || "password",
     port: parseInt(process.env.SFTP_PORT || "22"),
-    remotePath: process.env.SFTP_REMOTE_PATH || "/",
+    remotePath:
+      process.env.SFTP_REMOTE_PATH ||
+      "/var/www/vhosts/vd.com.ar/httpdocs/ftp-incoming",
     filePattern: process.env.SFTP_FILE_PATTERN || "*.*",
     timeout: parseInt(process.env.SFTP_TIMEOUT || "30000"),
   } as SFTPConfig,
