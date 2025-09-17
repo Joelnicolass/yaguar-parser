@@ -208,7 +208,7 @@ export class SucursalService {
         regular_price: producto.regular_price.toString(),
         description: cleanDescription,
         short_description: cleanShortDescription,
-        categories: [{ id: sucursalInfo.id }],
+        categories: [{ id: producto.meta_data }],
         type: "simple",
         status: "publish",
         stock_status: "instock",
