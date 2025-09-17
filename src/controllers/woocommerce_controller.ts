@@ -228,8 +228,38 @@ export class WoocommerceController {
           try {
             const wooProduct = producto;
             // Crear producto en WooCommerce de la sucursal
-            const response = await wooInstance.post("products", wooProduct);
+            let response;
+            try {
+              response = await wooInstance.post("products", wooProduct);
+            } catch (error: any) {
+              // Si el error es por SKU duplicado, intentar actualizar el producto existente
+              if (error.response?.data?.code === "product_invalid_sku") {
+                logger.warn(
+                  `SKU ${wooProduct.sku} ya existe, intentando actualizar...`
+                );
+                // Buscar el producto por SKU
+                const existingProducts = await wooInstance.get("products", {
+                  sku: wooProduct.sku,
+                  per_page: 1,
+                });
+                if (existingProducts.data && existingProducts.data.length > 0) {
+                  const existingProduct = existingProducts.data[0];
+                  // Remover el SKU del update
+                  const updateData = { ...wooProduct };
 
+                  updateData.sku && delete updateData.sku;
+
+                  response = await wooInstance.put(
+                    `products/${existingProduct.id}`,
+                    updateData
+                  );
+                } else {
+                  throw error;
+                }
+              } else {
+                throw error;
+              }
+            }
             if (response.status === 201) {
               uploadedCount++;
               logger.debug(
