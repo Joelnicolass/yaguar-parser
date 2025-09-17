@@ -24,7 +24,10 @@ import {
   SucursalParserResult,
   WooCommerceConfig,
 } from "../../types";
-import { CATEGORIAS_POR_ID } from "../../config/categorias_referencia";
+import {
+  CategoriaReferencia,
+  CATEGORIAS_POR_ID,
+} from "../../config/categorias_referencia";
 
 interface WooCommerceProductFromSucursal {
   sku: string;
@@ -32,7 +35,7 @@ interface WooCommerceProductFromSucursal {
   regular_price: string;
   description: string;
   short_description: string;
-  categories: Array<{ id: number }>;
+  categories: Array<CategoriaReferencia>;
   type: string;
   status: string;
   manage_stock?: boolean;
@@ -203,21 +206,23 @@ export class SucursalService {
       // Generar URL de imagen basada en SKU
       const imageUrl = `https://shop.yaguar.com.ar/common/img/Productos/${producto.sku}/250x250.jpg`;
 
+      // Filtrar categorías para evitar 'undefined'
+      const categoria = CATEGORIAS_POR_ID[producto.meta_data];
+      const categories: CategoriaReferencia[] = categoria ? [categoria] : [];
+
       return {
         sku: producto.sku.toString(),
         name: productName,
         regular_price: producto.regular_price.toString(),
         description: cleanDescription,
         short_description: cleanShortDescription,
-        categories: [CATEGORIAS_POR_ID[producto.meta_data]],
+        categories,
         type: "simple",
         status: "publish",
         stock_status: "instock",
         images: [
           {
             src: imageUrl,
-            // name: productName,
-            // alt: productName,
           },
         ],
         meta_data: [
