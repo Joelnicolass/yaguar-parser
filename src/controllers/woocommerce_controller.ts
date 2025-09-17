@@ -245,9 +245,11 @@ export class WoocommerceController {
                 if (existingProducts.data && existingProducts.data.length > 0) {
                   const existingProduct = existingProducts.data[0];
                   // Remover el SKU del update
-                  const updateData = { ...wooProduct };
 
-                  updateData.sku && delete updateData.sku;
+                  const updateData = {
+                    ...wooProduct,
+                    sku: undefined,
+                  };
 
                   response = await wooInstance.put(
                     `products/${existingProduct.id}`,
