@@ -25,6 +25,7 @@ import {
   SucursalCredenciales,
   getSucursalIdByFilename,
 } from "../config/sucursales_credenciales";
+import { SucursalService } from "../services/sucursal/sucursal_service";
 
 // Interfaces para tipado
 interface WooCommerceProduct {
@@ -213,15 +214,19 @@ export class WoocommerceController {
 
       // Procesar productos en lotes para evitar sobrecarga de la API
       const batchSize = 10;
-      for (let i = 0; i < productos.length; i += batchSize) {
-        const batch = productos.slice(i, i + batchSize);
+
+      const product = SucursalService.convertToWooCommerceFormat(productos, {
+        id: sucursal_id,
+        nombre: nombre_sucursal,
+      });
+
+      for (let i = 0; i < product.length; i += batchSize) {
+        const batch = product.slice(i, i + batchSize);
 
         // Procesar cada producto del lote
         const batchPromises = batch.map(async (producto) => {
           try {
-            const wooProduct =
-              this.convertSucursalProductToWooProduct(producto);
-
+            const wooProduct = producto;
             // Crear producto en WooCommerce de la sucursal
             const response = await wooInstance.post("products", wooProduct);
 

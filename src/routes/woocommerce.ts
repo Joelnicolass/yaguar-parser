@@ -282,7 +282,7 @@ router.get("/sucursales", async (req: Request, res: Response) => {
 
     // Omitir información sensible como secretos
     const sucursalesSafe = sucursales.map((sucursal) => ({
-      sucursal_id: sucursal.sucursal_id,
+      //sucursal_id: sucursal.sucursal_id,
       nombre: sucursal.nombre,
       url: sucursal.credenciales.url,
       // No incluir consumerKey ni consumerSecret por seguridad

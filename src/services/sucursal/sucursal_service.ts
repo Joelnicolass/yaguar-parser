@@ -191,7 +191,7 @@ export class SucursalService {
   /**
    * Convertir productos de sucursal a formato WooCommerce
    */
-  private static convertToWooCommerceFormat(
+  public static convertToWooCommerceFormat(
     productos: SucursalProduct[],
     sucursalInfo: { id: number; nombre: string }
   ): WooCommerceProductFromSucursal[] {
