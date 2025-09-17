@@ -29,14 +29,16 @@ let AdmZip: any;
 try {
   AdmZip = require("adm-zip");
 } catch (error) {
-  logger.warn("adm-zip no está instalado. Solo estará disponible descompresión .z y .rar");
+  logger.warn(
+    "adm-zip no está instalado. Solo estará disponible descompresión .z y .rar"
+  );
 }
 
 export interface CompressionResult {
   success: boolean;
   extractedFiles: string[];
-  targetFile?: string;
   extractionPath?: string;
+  extracetedFilesFullPath?: string[];
   error?: string;
   duration?: number;
 }
@@ -45,16 +47,14 @@ export class CompressionService {
   /**
    * Descomprimir archivo y buscar archivo específico
    */
-  public static async extractAndFindFile(
-    compressedFilePath: string,
-    targetFileName: string = "Articulos_articulo.z"
+  public static async extractAndReturnAllFiles(
+    compressedFilePath: string
   ): Promise<CompressionResult> {
     const startTime = Date.now();
-    
+
     try {
       logger.info("🗜️ Iniciando descompresión de archivo", {
         compressedFile: path.basename(compressedFilePath),
-        targetFile: targetFileName,
       });
 
       // Validar que el archivo existe
@@ -68,7 +68,7 @@ export class CompressionService {
 
       const fileExtension = path.extname(compressedFilePath).toLowerCase();
       const fileName = path.basename(compressedFilePath, fileExtension);
-      
+
       // Crear directorio de extracción temporal
       const extractionDir = path.join(
         config.paths.tempDir,
@@ -113,65 +113,31 @@ export class CompressionService {
         return result;
       }
 
-      // Buscar el archivo objetivo en los archivos extraídos
-      const targetFile = await CompressionService.findTargetFile(
-        extractionDir,
-        targetFileName
-      );
+      const duration = Date.now() - startTime;
 
-      if (targetFile) {
-        // Si el archivo objetivo también está comprimido, descomprimirlo
-        const targetExtension = path.extname(targetFile).toLowerCase();
-        if ([".z", ".rar", ".zip"].includes(targetExtension)) {
-          logger.info("🔍 Archivo objetivo encontrado y está comprimido, descomprimiendo...", {
-            targetFile: path.basename(targetFile),
-          });
+      // Buscar archivos JSON en el directorio de extracción
+      const allJsonFiles = CompressionService.findAllJsonFiles(extractionDir);
 
-          const finalResult = await CompressionService.extractAndFindFile(
-            targetFile,
-            "*.asc" // Buscar archivo .asc después de la segunda descompresión
-          );
+      logger.info("✅ Descompresión completada", {
+        extractedFiles: result.extractedFiles,
+        totalJsonFiles: allJsonFiles.length,
+        duration,
+      });
 
-          const duration = Date.now() - startTime;
-          return {
-            ...finalResult,
-            duration,
-            extractionPath: extractionDir,
-          };
-        } else {
-          // El archivo objetivo no está comprimido, devolverlo
-          const duration = Date.now() - startTime;
-          return {
-            success: true,
-            extractedFiles: result.extractedFiles,
-            targetFile,
-            extractionPath: extractionDir,
-            duration,
-          };
-        }
-      } else {
-        // Buscar cualquier archivo .asc si no se encuentra el archivo específico
-        const ascFile = await CompressionService.findTargetFile(
-          extractionDir,
-          "*.asc"
-        );
-
-        const duration = Date.now() - startTime;
-        return {
-          success: !!ascFile,
-          extractedFiles: result.extractedFiles,
-          targetFile: ascFile || undefined,
-          extractionPath: extractionDir,
-          duration,
-          error: ascFile ? undefined : `Archivo objetivo no encontrado: ${targetFileName}`,
-        };
-      }
+      return {
+        success: true,
+        extractedFiles: result.extractedFiles,
+        extracetedFilesFullPath: allJsonFiles, // Rutas completas de archivos JSON
+        extractionPath: result.extractionPath,
+        duration,
+      };
     } catch (error) {
       const duration = Date.now() - startTime;
-      const errorMessage = error instanceof Error ? error.message : "Error desconocido";
-      
+      const errorMessage =
+        error instanceof Error ? error.message : "Error desconocido";
+
       logger.error("❌ Error en descompresión:", error);
-      
+
       return {
         success: false,
         extractedFiles: [],
@@ -213,7 +179,7 @@ export class CompressionService {
 
       // Verificar que el archivo se extrajo
       const extractedFiles = fs.readdirSync(extractionDir);
-      
+
       return {
         success: extractedFiles.length > 0,
         extractedFiles,
@@ -224,7 +190,8 @@ export class CompressionService {
       return {
         success: false,
         extractedFiles: [],
-        error: error instanceof Error ? error.message : "Error en descompresión .z",
+        error:
+          error instanceof Error ? error.message : "Error en descompresión .z",
       };
     }
   }
@@ -251,7 +218,7 @@ export class CompressionService {
       }
 
       const extractedFiles = fs.readdirSync(extractionDir);
-      
+
       return {
         success: extractedFiles.length > 0,
         extractedFiles,
@@ -262,7 +229,10 @@ export class CompressionService {
       return {
         success: false,
         extractedFiles: [],
-        error: error instanceof Error ? error.message : "Error en descompresión .rar",
+        error:
+          error instanceof Error
+            ? error.message
+            : "Error en descompresión .rar",
       };
     }
   }
@@ -285,12 +255,14 @@ export class CompressionService {
         zip.extractAllTo(extractionDir, true);
       } else {
         // Fallback con comando unzip del sistema
-        logger.warn("adm-zip no disponible, usando comando unzip del sistema...");
+        logger.warn(
+          "adm-zip no disponible, usando comando unzip del sistema..."
+        );
         await execAsync(`unzip -o "${filePath}" -d "${extractionDir}"`);
       }
 
       const extractedFiles = fs.readdirSync(extractionDir);
-      
+
       return {
         success: extractedFiles.length > 0,
         extractedFiles,
@@ -301,9 +273,59 @@ export class CompressionService {
       return {
         success: false,
         extractedFiles: [],
-        error: error instanceof Error ? error.message : "Error en descompresión .zip",
+        error:
+          error instanceof Error
+            ? error.message
+            : "Error en descompresión .zip",
       };
     }
+  }
+
+  /**
+   * Buscar todos los archivos JSON recursivamente en un directorio
+   */
+  public static findAllJsonFiles(searchDir: string): string[] {
+    const jsonFiles: string[] = [];
+
+    try {
+      const searchRecursively = (dir: string): void => {
+        const items = fs.readdirSync(dir);
+
+        for (const item of items) {
+          const itemPath = path.join(dir, item);
+          
+          try {
+            const stats = fs.statSync(itemPath);
+
+            if (stats.isDirectory()) {
+              // Excluir directorios de metadatos de macOS
+              if (item === '__MACOSX' || item.startsWith('._')) {
+                continue;
+              }
+              // Recursivamente buscar en subdirectorios
+              searchRecursively(itemPath);
+            } else if (item.toLowerCase().endsWith('.json')) {
+              // Excluir archivos de metadatos de macOS que empiezan con ._
+              if (item.startsWith('._')) {
+                continue;
+              }
+              // Agregar archivos JSON válidos a la lista
+              jsonFiles.push(itemPath);
+            }
+          } catch (error) {
+            // Ignorar archivos/directorios que no se pueden leer
+            logger.warn(`No se pudo acceder a: ${itemPath}`, error);
+            continue;
+          }
+        }
+      };
+
+      searchRecursively(searchDir);
+    } catch (error) {
+      logger.error("Error buscando archivos JSON:", error);
+    }
+
+    return jsonFiles;
   }
 
   /**
@@ -316,11 +338,11 @@ export class CompressionService {
     try {
       const searchRecursively = (dir: string): string | null => {
         const items = fs.readdirSync(dir);
-        
+
         for (const item of items) {
           const itemPath = path.join(dir, item);
           const stats = fs.statSync(itemPath);
-          
+
           if (stats.isDirectory()) {
             const found = searchRecursively(itemPath);
             if (found) return found;
@@ -346,10 +368,12 @@ export class CompressionService {
   /**
    * Limpiar archivos de extracción temporales
    */
-  public static async cleanupExtractionFiles(olderThanHours: number = 2): Promise<void> {
+  public static async cleanupExtractionFiles(
+    olderThanHours: number = 2
+  ): Promise<void> {
     try {
       const extractionDir = path.join(config.paths.tempDir, "extraction");
-      
+
       if (!fs.existsSync(extractionDir)) {
         return;
       }
@@ -375,7 +399,9 @@ export class CompressionService {
       }
 
       if (deletedCount > 0) {
-        logger.info(`✅ Limpieza de archivos de extracción completada: ${deletedCount} directorios eliminados`);
+        logger.info(
+          `✅ Limpieza de archivos de extracción completada: ${deletedCount} directorios eliminados`
+        );
       }
     } catch (error) {
       logger.error("Error durante limpieza de archivos de extracción:", error);
@@ -402,7 +428,7 @@ export class CompressionService {
     try {
       const stats = fs.statSync(filePath);
       const extension = path.extname(filePath).toLowerCase();
-      
+
       return {
         isCompressed: CompressionService.isCompressedFile(filePath),
         type: extension,
@@ -433,7 +459,7 @@ export class CompressionService {
   } {
     try {
       const extractionDir = path.join(config.paths.tempDir, "extraction");
-      
+
       if (!fs.existsSync(extractionDir)) {
         return {
           totalDirectories: 0,
@@ -471,10 +497,15 @@ export class CompressionService {
       return {
         totalDirectories: directoryInfo.length,
         totalSizeBytes,
-        directories: directoryInfo.sort((a, b) => b.created.getTime() - a.created.getTime()),
+        directories: directoryInfo.sort(
+          (a, b) => b.created.getTime() - a.created.getTime()
+        ),
       };
     } catch (error) {
-      logger.error("Error obteniendo información del directorio de extracción:", error);
+      logger.error(
+        "Error obteniendo información del directorio de extracción:",
+        error
+      );
       return {
         totalDirectories: 0,
         totalSizeBytes: 0,
@@ -491,12 +522,12 @@ export class CompressionService {
 
     try {
       const items = fs.readdirSync(dirPath);
-      
+
       for (const item of items) {
         try {
           const itemPath = path.join(dirPath, item);
           const stats = fs.statSync(itemPath);
-          
+
           if (stats.isDirectory()) {
             totalSize += CompressionService.calculateDirectorySize(itemPath);
           } else {
@@ -521,12 +552,12 @@ export class CompressionService {
 
     try {
       const items = fs.readdirSync(dirPath);
-      
+
       for (const item of items) {
         try {
           const itemPath = path.join(dirPath, item);
           const stats = fs.statSync(itemPath);
-          
+
           if (stats.isDirectory()) {
             fileCount += CompressionService.countFilesInDirectory(itemPath);
           } else {

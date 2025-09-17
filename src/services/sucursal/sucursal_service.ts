@@ -268,6 +268,7 @@ export class SucursalService {
         consumerKey: config.woocommerce.consumerKey,
         consumerSecret: config.woocommerce.consumerSecret,
         version: config.woocommerce.version,
+        sucursal_id: sucursalData.sucursal_id,
       };
 
       const wooController = new WoocommerceController(wooConfig);

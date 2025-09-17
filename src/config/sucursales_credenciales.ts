@@ -13,7 +13,6 @@
 import { WooCommerceConfig } from "../types";
 
 export interface SucursalCredenciales {
-  sucursal_id: number;
   nombre: string;
   credenciales: WooCommerceConfig;
 }
@@ -25,7 +24,7 @@ export interface SucursalCredenciales {
  * antes de usar en producción.
  */
 export const SUCURSALES_CREDENCIALES: Record<number, SucursalCredenciales> = {
-  3: {
+  /* 3: {
     sucursal_id: 3,
     nombre: "Campana",
     credenciales: {
@@ -90,18 +89,18 @@ export const SUCURSALES_CREDENCIALES: Record<number, SucursalCredenciales> = {
       consumerSecret: process.env.WOOCOMMERCE_SALTA_SECRET || "cs_salta_secret",
       version: "wc/v3",
     },
-  },
+  }, */
   10: {
-    sucursal_id: 10,
     nombre: "Autopista",
     credenciales: {
+      sucursal_id: 10,
       url: "https://vd.com.ar/autopista/",
       consumerKey: "ck_2982c85bd4b7f84ffe141dd9a8b29abf02c5e0ab",
       consumerSecret: "cs_61c4521b2c309a952edec919fc95f209493cb808",
       version: "wc/v3",
     },
   },
-  12: {
+  /* 12: {
     sucursal_id: 12,
     nombre: "Mar del Plata",
     credenciales: {
@@ -228,11 +227,11 @@ export const SUCURSALES_CREDENCIALES: Record<number, SucursalCredenciales> = {
       consumerSecret: process.env.WOOCOMMERCE_JUJUY_SECRET || "cs_jujuy_secret",
       version: "wc/v3",
     },
-  },
+  }, */
   24: {
-    sucursal_id: 24,
     nombre: "Chacabuco",
     credenciales: {
+      sucursal_id: 24,
       url: "https://vd.com.ar/",
       consumerKey: "ck_2ebb13760100741f2da793984ae114e2cf588114",
       consumerSecret: "cs_b808157442282d9aa1b023f2052e7c48285f516f",
@@ -289,6 +288,13 @@ export const ARCHIVO_A_SUCURSAL_ID: Record<string, number> = {
   "webprecsantafe.json": 5,
   "webprectrelew.json": 22,
 };
+
+export const SUCURSAL_ID_A_ARCHIVO: Record<number, string> = Object.entries(
+  ARCHIVO_A_SUCURSAL_ID
+).reduce((acc, [filename, sucursalId]) => {
+  acc[sucursalId] = filename;
+  return acc;
+}, {} as Record<number, string>);
 
 /**
  * Obtener sucursal_id por nombre de archivo

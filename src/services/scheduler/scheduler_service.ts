@@ -20,10 +20,20 @@ import { SftpService } from "../sftp/sftp_service";
 import { ParserService } from "../parser/parser_service";
 import { SyncStatusEnum } from "../../types";
 import path from "path";
+import { CompressionService } from "../compression/compression_service";
+import { WoocommerceController } from "../../controllers/woocommerce_controller";
+import {
+  ARCHIVO_A_SUCURSAL_ID,
+  SUCURSAL_ID_A_ARCHIVO,
+  SucursalCredenciales,
+  SUCURSALES_CREDENCIALES,
+} from "../../config/sucursales_credenciales";
 
 export class SchedulerService {
   private static syncTask: cron.ScheduledTask | null = null;
   private static isRunning: boolean = false;
+  // Agregar flag de bloqueo para prevenir ejecuciones concurrentes
+  private static isAutoSyncInProgress: boolean = false;
 
   /**
    * Inicializar el scheduler con la configuración de cron
@@ -56,6 +66,24 @@ export class SchedulerService {
       });
     } catch (error) {
       logger.error("Error al inicializar scheduler:", error);
+      throw error;
+    }
+  }
+
+  /**
+   * Ejecutar inmediatamente DEBUG
+   *
+   */
+  public static async DEBUG_executeImmediateSync(): Promise<void> {
+    try {
+      logger.info("Ejecución inmediata de sincronización (DEBUG) iniciada...");
+      await SchedulerService.triggerAutomaticSync();
+      logger.info("Ejecución inmediata de sincronización (DEBUG) finalizada.");
+    } catch (error) {
+      logger.error(
+        "Error en ejecución inmediata de sincronización (DEBUG):",
+        error
+      );
       throw error;
     }
   }
@@ -144,9 +172,23 @@ export class SchedulerService {
         return null;
       }
 
-      // Calcular próxima ejecución manualmente basada en la expresión cron
+      // Calcular próxima ejecución basada en la expresión cron actual
       const now = new Date();
       const schedule = config.scheduler.syncCronSchedule;
+
+      // Para expresiones de segundos (6 campos): "*/10 * * * * *"
+      if (schedule.split(" ").length === 6) {
+        const parts = schedule.split(" ");
+        const secondsPart = parts[0];
+
+        if (secondsPart && secondsPart.startsWith("*/")) {
+          const interval = parseInt(secondsPart.substring(2));
+          if (!isNaN(interval) && interval > 0) {
+            const nextRun = new Date(now.getTime() + interval * 1000);
+            return nextRun.toISOString();
+          }
+        }
+      }
 
       // Para el caso de "0 3 * * *" (3:00 AM diario)
       if (schedule === "0 3 * * *") {
@@ -179,7 +221,29 @@ export class SchedulerService {
   private static async executeSyncTask(): Promise<void> {
     logger.info("⏰ Tarea de sincronización automática iniciada");
 
+    // Verificación doble con bloqueo local
+    if (SchedulerService.isAutoSyncInProgress) {
+      logger.warn(
+        "Sincronización automática omitida - flag de progreso activo"
+      );
+      return;
+    }
+
+    // Agregar timeout de seguridad para liberar el flag automáticamente
+    let timeoutId: NodeJS.Timeout;
+
     try {
+      // Marcar inmediatamente como en progreso para evitar concurrencia
+      SchedulerService.isAutoSyncInProgress = true;
+
+      // Timeout de seguridad: liberar flag después de 5 minutos máximo
+      timeoutId = setTimeout(() => {
+        logger.warn(
+          "⚠️ Timeout de seguridad: liberando flag de sincronización automática después de 5 minutos"
+        );
+        SchedulerService.isAutoSyncInProgress = false;
+      }, 5 * 60 * 1000); // 5 minutos
+
       // Verificar que no haya una sincronización en curso
       const currentStatus = SyncController.getCurrentStatus();
 
@@ -192,9 +256,31 @@ export class SchedulerService {
 
       // Ejecutar sincronización automática
       logger.info("Iniciando sincronización automática programada...");
-      await SchedulerService.triggerAutomaticSync();
+
+      // Agregar timeout a la sincronización completa
+      const syncPromise = SchedulerService.triggerAutomaticSync();
+      const timeoutPromise = new Promise((_, reject) => {
+        setTimeout(
+          () => reject(new Error("Timeout de sincronización (4 minutos)")),
+          4 * 60 * 1000
+        );
+      });
+
+      await Promise.race([syncPromise, timeoutPromise]);
+
+      // Si llegamos aquí, la sincronización completó exitosamente
+      clearTimeout(timeoutId);
     } catch (error) {
+      // Limpiar timeout si hay error
+      if (timeoutId!) {
+        clearTimeout(timeoutId);
+      }
+
       logger.error("Error en tarea de sincronización automática:", error);
+    } finally {
+      // Asegurar que el flag se libere siempre
+      SchedulerService.isAutoSyncInProgress = false;
+      logger.info("Flag de sincronización automática liberado");
     }
   }
 
@@ -274,7 +360,6 @@ export class SchedulerService {
         downloadTime: downloadResult.downloadTime,
       });
 
-      // Fase de validación: Validar archivo antes del parsing
       logger.info("🔍 Fase 1.5: Validando archivo descargado...");
 
       if (!downloadResult.fileName) {
@@ -293,64 +378,74 @@ export class SchedulerService {
 
       logger.info("✅ Archivo validado - Continuando con el procesamiento");
 
-      // // Fase 2: Parsear archivo descargado usando ParserService real
-      // logger.info("⚙️ Fase 2: Procesando datos del archivo descargado...");
+      const LOCAL_PATH = downloadResult.localPath;
+      logger.info({ LOCAL_PATH });
 
-      // const parseResult = await ParserService.parseFromTempFile(
-      //   downloadResult.fileName
-      // );
+      // Descomprimir el archivo
+      logger.info("🗜️ Fase 2: Descomprimiendo archivo...");
+      const unzipped = await CompressionService.extractAndReturnAllFiles(
+        LOCAL_PATH
+      );
 
-      // if (!parseResult.success) {
-      //   throw new Error(`Error al parsear archivo: ${parseResult.error}`);
-      // }
+      if (!unzipped.success || !unzipped.extractionPath) {
+        throw new Error(`Error al descomprimir: ${unzipped.error}`);
+      }
 
-      // logger.info("✅ Archivo parseado exitosamente", {
-      //   productsCount: parseResult.productsCount,
-      //   outputPath: parseResult.outputPath,
-      //   duration: parseResult.duration,
-      // });
-
-      // // Fase 3: Generar estadísticas del procesamiento
-      // logger.info("📊 Fase 3: Generando estadísticas del procesamiento...");
-
-      // const stats = ParserService.getParsingStats(parseResult.filePath || "");
-
-      // logger.info("📈 Estadísticas del procesamiento:", {
-      //   fileExists: stats.exists,
-      //   fileSize: stats.size,
-      //   totalLines: stats.lines,
-      //   productsProcessed: parseResult.productsCount,
-      //   lastModified: stats.lastModified,
-      // });
-
-      // Fase 4: Limpieza de archivos temporales antiguos
-      logger.info("🗑️ Fase 4: Limpiando archivos temporales...");
-
-      // Limpiar archivos SFTP antiguos (más de 2 horas)
-      //await SftpService.cleanupTempFiles(2);
-
-      // Limpiar archivos parseados antiguos (más de 24 horas)
-      //await ParserService.cleanupParsedFiles(24);
-
-      const duration = Date.now() - startTime;
-
-      logger.info("✅ Sincronización automática completada exitosamente", {
-        totalDuration: `${duration}ms`,
-        fileName: downloadResult.fileName,
-        fileSize: downloadResult.fileSize,
-        // productsProcessed: parseResult.productsCount,
-        // outputPath: parseResult.outputPath,
-        type: "automatic-complete",
-        phases: {
-          download: `${downloadResult.downloadTime}ms`,
-          // parsing: `${parseResult.duration}ms`,
-          total: `${duration}ms`,
-        },
+      logger.info("✅ Archivo descomprimido", {
+        extractionPath: unzipped.extractionPath,
+        extractedFiles: unzipped.extractedFiles,
+        extractedFilesFullPath: unzipped.extracetedFilesFullPath,
+        duration: unzipped.duration,
       });
 
-      // TODO: Aquí se puede agregar la fase de integración con WooCommerce
-      // cuando tengamos los datos de conexión reales
-      logger.info("🔮 Próxima fase: Integración con WooCommerce (pendiente)");
+      // refactorizar esto -> es una negrada
+      const wooController = new WoocommerceController();
+
+      const result = await wooController.uploadProductsFromMultipleSucursales(
+        unzipped.extracetedFilesFullPath!
+      );
+
+      logger.info("✅ Productos sincronizados a WooCommerce", {
+        ...result,
+      });
+
+      /*  const credentials: SucursalCredenciales["credenciales"][] = [];
+
+      Object.keys(SUCURSALES_CREDENCIALES).forEach((key) => {
+        if (!SUCURSALES_CREDENCIALES[parseInt(key)]) return;
+
+        return credentials.push(
+          SUCURSALES_CREDENCIALES[parseInt(key)]!.credenciales
+        );
+      });
+ */
+      // factory de controllers - cada controller es una sucursal
+
+      /* const woocommerceControllers = credentials.map(
+        (cred) => new WoocommerceController(cred)
+      );
+
+      logger.info(
+        `✅ Inicializados ${woocommerceControllers.length} controladores de WooCommerce`
+      ); */
+
+      // Fase 3: SINCRONIZAR A WOO
+
+      /* let promises: Promise<any>[] = [];
+
+      woocommerceControllers.forEach((wcController) => {
+        const archivoSucursal = SUCURSAL_ID_A_ARCHIVO[wcController.sucursalId!];
+        promises.push(
+          wcController.uploadProductsFromSucursalJson(archivoSucursal!)
+        );
+      });
+
+      await Promise.all(promises); */
+
+      const duration = Date.now() - startTime;
+      logger.info("✅ Sincronización automática completada exitosamente", {
+        totalDuration: `${duration}ms`,
+      });
     } catch (error) {
       const duration = Date.now() - startTime;
       logger.error("❌ Error en sincronización automática:", {

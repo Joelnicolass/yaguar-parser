@@ -159,6 +159,7 @@ export interface ParserConfig {
  * Types para WooCommerce Controller
  */
 export interface WooCommerceConfig {
+  sucursal_id: number;
   url: string;
   consumerKey: string;
   consumerSecret: string;

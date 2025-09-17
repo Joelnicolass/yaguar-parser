@@ -69,6 +69,7 @@ interface SucursalData {
 export class WoocommerceController {
   private woocommerceInstances: Map<number, WooCommerceRestApi> = new Map();
   private defaultWoocommerce?: WooCommerceRestApi;
+  public sucursalId: number | null = null;
 
   /**
    * Constructor - Inicializa la instancia por defecto (para compatibilidad hacia atrás)
@@ -84,6 +85,8 @@ export class WoocommerceController {
           timeout: 120000, // 2 minutos timeout para operaciones batch
         },
       });
+
+      this.sucursalId = woocommerceConfig.sucursal_id;
 
       logger.info(
         "🛒 WooCommerce Controller inicializado (instancia por defecto)",
@@ -136,6 +139,8 @@ export class WoocommerceController {
         url: credenciales.credenciales.url,
       }
     );
+
+    this.sucursalId = sucursalId;
 
     return wooInstance;
   }

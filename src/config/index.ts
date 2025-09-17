@@ -64,9 +64,8 @@ export const config: AppConfig = {
 
   // Configuración del cron
   scheduler: {
-    syncCronSchedule: process.env.SYNC_CRON_SCHEDULE || "0 3 * * *", // 3:00 AM diario
-
-    // syncCronSchedule: process.env.SYNC_CRON_SCHEDULE || "*/1 * * * *", // Cada 1 minuto para testing
+    // syncCronSchedule: process.env.SYNC_CRON_SCHEDULE || "0 3 * * *", // 3:00 AM diario
+    syncCronSchedule: process.env.SYNC_CRON_SCHEDULE || "0 3 * * *", // Cada 10 segundos para testing
   },
 
   // Configuración de logging
@@ -95,6 +94,7 @@ export const config: AppConfig = {
     batchSize: parseInt(process.env.WOOCOMMERCE_BATCH_SIZE || "10"),
   },
   woocommerce: {
+    sucursal_id: 0,
     url: process.env.WOOCOMMERCE_URL || "",
     consumerKey: process.env.WOOCOMMERCE_CONSUMER_KEY || "",
     consumerSecret: process.env.WOOCOMMERCE_CONSUMER_SECRET || "",
