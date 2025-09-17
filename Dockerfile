@@ -66,6 +66,7 @@ COPY --from=builder --chown=yaguar:nodejs /app/examples ./examples
 RUN mkdir -p logs temp temp/parsed temp/examples && \
     chown -R yaguar:nodejs logs temp
 
+
 # Variables de entorno por defecto (pueden ser sobrescritas en runtime)
 ENV NODE_ENV=production
 ENV PORT=3000
@@ -75,9 +76,9 @@ ENV LOGS_DIR=/app/logs
 ENV TZ=America/Argentina/Buenos_Aires
 
 # Variables de entorno para SFTP
-ENV SFTP_HOST=test.rebex.net
-ENV SFTP_USER=demo
-ENV SFTP_PASSWORD=password
+ENV SFTP_HOST=209.46.122.76
+ENV SFTP_USER=vd.com.ar_6lq2mbft7aw
+#ENV SFTP_PASSWORD=aB6_o?kc2JlcSu5ol
 ENV SFTP_PORT=22
 ENV SFTP_TIMEOUT=30000
 
@@ -89,9 +90,9 @@ ENV LOG_MAX_SIZE=10m
 ENV LOG_MAX_FILES=5
 
 # Variables de entorno para WooCommerce
-ENV WOOCOMMERCE_URL=""
-ENV WOOCOMMERCE_CONSUMER_KEY=""
-ENV WOOCOMMERCE_CONSUMER_SECRET=""
+ENV WOOCOMMERCE_URL=https://vd.com.ar/
+#ENV WOOCOMMERCE_CONSUMER_KEY=ack_10cdee11ebf5fcd81e9cd7cbb18628a9670e2278
+#ENV WOOCOMMERCE_CONSUMER_SECRET=acs_15b094700dd1d9372dae238e2b8cbc8b629d187c
 ENV WOOCOMMERCE_VERSION=wc/v3
 
 # Configurar zona horaria
@@ -117,12 +118,12 @@ CMD ["node", "dist/index.js"]
 # docker build -t yaguar-sync .
 
 # Etiquetar la imagen (reemplazar USERNAME por tu usuario de Docker Hub)
-# docker tag yaguar-sync joelsartori/yaguar-sync:latest
+# docker tag yaguar-sync joelnicolass/yaguar-sync:latest
 
 # Iniciar sesión en Docker Hub (ejecutar en terminal)
 # docker login
 # Subir la imagen a Docker Hub (ejecutar en terminal)
-# docker push joelsartori/yaguar-sync:latest
+# docker push joelnicolass/yaguar-sync:latest
 # ============================================
 
 # ============================================
@@ -155,7 +156,7 @@ CMD ["node", "dist/index.js"]
 # apt update && apt install -y docker.io
 
 # Descargar imagen de Godot desde Docker Hub
-# docker pull usuario/repositorio
+# docker pull joelnicolass/yaguar-sync:latest
 
 # Correr el contenedor
 # docker run -d --name nombre-servidor -p 3000:3000 usuario/repositorio
@@ -175,3 +176,14 @@ CMD ["node", "dist/index.js"]
 
 # Eliminar todas las imágenes
 # docker rmi $(docker images -a -q)
+
+# descargar archivo de imagen de docker para subir a servidor sin internet
+# docker save -o yaguar-sync.tar joelnicolass/yaguar-sync
+
+# amd64
+# docker buildx build --platform linux/amd64 -t yaguar-sync:amd64 --load .
+# docker save -o yaguar-sync_amd64.tar yaguar-sync:amd64
+
+# arm64
+# docker buildx build --platform linux/arm64 -t yaguar-sync:arm64 --load .
+# docker save -o yaguar-sync_arm64.tar yaguar-sync:arm64
