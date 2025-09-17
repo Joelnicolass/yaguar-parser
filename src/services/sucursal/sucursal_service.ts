@@ -24,6 +24,7 @@ import {
   SucursalParserResult,
   WooCommerceConfig,
 } from "../../types";
+import { CATEGORIAS_POR_ID } from "../../config/categorias_referencia";
 
 interface WooCommerceProductFromSucursal {
   sku: string;
@@ -208,7 +209,7 @@ export class SucursalService {
         regular_price: producto.regular_price.toString(),
         description: cleanDescription,
         short_description: cleanShortDescription,
-        categories: [{ id: producto.meta_data }],
+        categories: [CATEGORIAS_POR_ID[producto.meta_data]],
         type: "simple",
         status: "publish",
         stock_status: "instock",
