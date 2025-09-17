@@ -74,13 +74,11 @@ ENV TEMP_DIR=/app/temp
 ENV LOGS_DIR=/app/logs
 ENV TZ=America/Argentina/Buenos_Aires
 
-# Variables de entorno para SFTP (valores por defecto para testing)
+# Variables de entorno para SFTP
 ENV SFTP_HOST=test.rebex.net
 ENV SFTP_USER=demo
 ENV SFTP_PASSWORD=password
 ENV SFTP_PORT=22
-ENV SFTP_REMOTE_PATH=/
-ENV SFTP_FILE_PATTERN=*.sql
 ENV SFTP_TIMEOUT=30000
 
 # Variables de entorno para Cron
@@ -89,6 +87,12 @@ ENV SYNC_CRON_SCHEDULE="0 3 * * *"
 # Variables de entorno para Logging
 ENV LOG_MAX_SIZE=10m
 ENV LOG_MAX_FILES=5
+
+# Variables de entorno para WooCommerce
+ENV WOOCOMMERCE_URL=""
+ENV WOOCOMMERCE_CONSUMER_KEY=""
+ENV WOOCOMMERCE_CONSUMER_SECRET=""
+ENV WOOCOMMERCE_VERSION=wc/v3
 
 # Configurar zona horaria
 RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
