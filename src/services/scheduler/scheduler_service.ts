@@ -281,47 +281,47 @@ export class SchedulerService {
         throw new Error("No se obtuvo el nombre del archivo descargado");
       }
 
-      const validation = SchedulerService.validateFileForParsing(
-        downloadResult.fileName
-      );
+      // const validation = SchedulerService.validateFileForParsing(
+      //   downloadResult.fileName
+      // );
 
-      if (!validation.valid) {
-        throw new Error(
-          `Archivo no válido para procesamiento: ${validation.reason}`
-        );
-      }
+      // if (!validation.valid) {
+      //   throw new Error(
+      //     `Archivo no válido para procesamiento: ${validation.reason}`
+      //   );
+      // }
 
       logger.info("✅ Archivo validado - Continuando con el procesamiento");
 
-      // Fase 2: Parsear archivo descargado usando ParserService real
-      logger.info("⚙️ Fase 2: Procesando datos del archivo descargado...");
+      // // Fase 2: Parsear archivo descargado usando ParserService real
+      // logger.info("⚙️ Fase 2: Procesando datos del archivo descargado...");
 
-      const parseResult = await ParserService.parseFromTempFile(
-        downloadResult.fileName
-      );
+      // const parseResult = await ParserService.parseFromTempFile(
+      //   downloadResult.fileName
+      // );
 
-      if (!parseResult.success) {
-        throw new Error(`Error al parsear archivo: ${parseResult.error}`);
-      }
+      // if (!parseResult.success) {
+      //   throw new Error(`Error al parsear archivo: ${parseResult.error}`);
+      // }
 
-      logger.info("✅ Archivo parseado exitosamente", {
-        productsCount: parseResult.productsCount,
-        outputPath: parseResult.outputPath,
-        duration: parseResult.duration,
-      });
+      // logger.info("✅ Archivo parseado exitosamente", {
+      //   productsCount: parseResult.productsCount,
+      //   outputPath: parseResult.outputPath,
+      //   duration: parseResult.duration,
+      // });
 
-      // Fase 3: Generar estadísticas del procesamiento
-      logger.info("📊 Fase 3: Generando estadísticas del procesamiento...");
+      // // Fase 3: Generar estadísticas del procesamiento
+      // logger.info("📊 Fase 3: Generando estadísticas del procesamiento...");
 
-      const stats = ParserService.getParsingStats(parseResult.filePath || "");
+      // const stats = ParserService.getParsingStats(parseResult.filePath || "");
 
-      logger.info("📈 Estadísticas del procesamiento:", {
-        fileExists: stats.exists,
-        fileSize: stats.size,
-        totalLines: stats.lines,
-        productsProcessed: parseResult.productsCount,
-        lastModified: stats.lastModified,
-      });
+      // logger.info("📈 Estadísticas del procesamiento:", {
+      //   fileExists: stats.exists,
+      //   fileSize: stats.size,
+      //   totalLines: stats.lines,
+      //   productsProcessed: parseResult.productsCount,
+      //   lastModified: stats.lastModified,
+      // });
 
       // Fase 4: Limpieza de archivos temporales antiguos
       logger.info("🗑️ Fase 4: Limpiando archivos temporales...");
@@ -338,12 +338,12 @@ export class SchedulerService {
         totalDuration: `${duration}ms`,
         fileName: downloadResult.fileName,
         fileSize: downloadResult.fileSize,
-        productsProcessed: parseResult.productsCount,
-        outputPath: parseResult.outputPath,
+        // productsProcessed: parseResult.productsCount,
+        // outputPath: parseResult.outputPath,
         type: "automatic-complete",
         phases: {
           download: `${downloadResult.downloadTime}ms`,
-          parsing: `${parseResult.duration}ms`,
+          // parsing: `${parseResult.duration}ms`,
           total: `${duration}ms`,
         },
       });
