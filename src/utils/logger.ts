@@ -37,30 +37,30 @@ const logFormat = winston.format.combine(
   winston.format.prettyPrint()
 );
 
-// Configuración para archivo de logs rotativos
-const fileRotateTransport = new DailyRotateFile({
-  filename: path.join(config.paths.logsDir, "yaguar-sync-%DATE%.log"),
-  datePattern: "YYYY-MM-DD",
-  maxSize: config.logging.maxSize,
-  maxFiles: config.logging.maxFiles,
-  format: logFormat,
-});
+// Configuración para archivo de logs rotativos (desactivado)
+// const fileRotateTransport = new DailyRotateFile({
+//   filename: path.join(config.paths.logsDir, "yaguar-sync-%DATE%.log"),
+//   datePattern: "YYYY-MM-DD",
+//   maxSize: config.logging.maxSize,
+//   maxFiles: config.logging.maxFiles,
+//   format: logFormat,
+// });
 
-// Configuración para errores
-const errorFileTransport = new DailyRotateFile({
-  filename: path.join(config.paths.logsDir, "error-%DATE%.log"),
-  datePattern: "YYYY-MM-DD",
-  level: "error",
-  maxSize: config.logging.maxSize,
-  maxFiles: config.logging.maxFiles,
-  format: logFormat,
-});
+// Configuración para errores (desactivado)
+// const errorFileTransport = new DailyRotateFile({
+//   filename: path.join(config.paths.logsDir, "error-%DATE%.log"),
+//   datePattern: "YYYY-MM-DD",
+//   level: "error",
+//   maxSize: config.logging.maxSize,
+//   maxFiles: config.logging.maxFiles,
+//   format: logFormat,
+// });
 
-// Configuración del logger
+// Configuración del logger (solo consola, sin archivos)
 const logger = winston.createLogger({
   level: config.logging.level,
   format: logFormat,
-  transports: [fileRotateTransport, errorFileTransport],
+  transports: [], // Sin transportes de archivo
 });
 
 // En desarrollo, también mostrar logs en consola

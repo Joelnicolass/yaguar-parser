@@ -31,15 +31,13 @@ interface WooCommerceProductFromSucursal {
   regular_price: string;
   description: string;
   short_description: string;
-  categories: Array<{ name: string }>;
+  categories: Array<{ id: number }>;
   type: string;
   status: string;
-  manage_stock: boolean;
+  manage_stock?: boolean;
   stock_status: string;
   images: Array<{
     src: string;
-    name: string;
-    alt: string;
   }>;
   meta_data: Array<{ key: string; value: any }>;
 }
@@ -210,16 +208,15 @@ export class SucursalService {
         regular_price: producto.regular_price.toString(),
         description: cleanDescription,
         short_description: cleanShortDescription,
-        categories: [{ name: `Sucursal ${sucursalInfo.nombre}` }],
+        categories: [{ id: sucursalInfo.id }],
         type: "simple",
         status: "publish",
-        manage_stock: true,
         stock_status: "instock",
         images: [
           {
             src: imageUrl,
-            name: productName,
-            alt: productName,
+            // name: productName,
+            // alt: productName,
           },
         ],
         meta_data: [
