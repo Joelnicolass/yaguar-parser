@@ -205,7 +205,8 @@ export class SucursalService {
       const productName = cleanDescription || cleanShortDescription || "";
 
       // Generar URL de imagen basada en SKU
-      const imageUrl = `https://shop.yaguar.com.ar/common/img/Productos/${producto.sku}/250x250.jpg`;
+      const imageUrl = `https://vd.com.ar/images/${producto.sku}.png`;
+      //`https://shop.yaguar.com.ar/common/img/Productos/${producto.sku}/250x250.jpg`;
 
       // Filtrar categorías para evitar 'undefined'
       const categoriaDefault = CATEGORIAS_POR_ID[producto.meta_data];

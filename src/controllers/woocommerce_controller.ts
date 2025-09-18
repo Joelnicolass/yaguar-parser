@@ -315,17 +315,43 @@ export class WoocommerceController {
         const end = start + batchSize;
         const batch = product.slice(start, end);
 
+        // verificar si la imagen que se quiere subir funciona, si no funciona dejar sin imagen
+
+        const finalBatch = await Promise.all(
+          batch.map(async (prod) => {
+            const imageFound = await fetch(prod.images[0]?.src || "")
+              .then((res) => res.ok)
+              .catch(() => false);
+            if (!imageFound) {
+              logger.warn(
+                `⚠️ Imagen no encontrada para SKU ${prod.sku}, se omitirá la imagen`
+              );
+
+              return {
+                ...prod,
+                images: [
+                  {
+                    src: "https://vd.com.ar/images/0000.png",
+                  },
+                ],
+              };
+            }
+            return prod;
+          })
+        );
+
         try {
           const resp = await wooInstance.post("products/batch", {
-            create: batch,
+            create: finalBatch,
           });
+          console.log(JSON.stringify(resp.data, null, 2));
           logger.debug(
             `😎 Batch ${batchIndex + 1}/${totalBatches} procesado: ${
               batch.length
             } productos creados`
           );
         } catch (error) {
-          logger.error(`❌ Error en batch de productos:`, error);
+          console.log(JSON.stringify(error, null, 2));
         }
 
         await new Promise((resolve) => setTimeout(resolve, 200));
