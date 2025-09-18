@@ -268,7 +268,7 @@ export class WoocommerceController {
       const product = SucursalService.convertToWooCommerceFormat(productos, {
         id: sucursal_id,
         nombre: nombre_sucursal,
-      }).slice(0, 3);
+      });
 
       for (let i = 0; i < product.length; i += batchSize) {
         const batch = product.slice(i, i + batchSize);
