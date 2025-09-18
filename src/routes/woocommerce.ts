@@ -134,6 +134,60 @@ router.post(
     }
   }
 );
+// crear un endpoint para crear un unico producto en woocommerce por sucursal id
+router.post(
+  "/create-product/:sucursalId",
+  async (req: Request, res: Response) => {
+    try {
+      const { sucursalId } = req.params;
+      const { productData } = req.body;
+
+      // if (!sucursalId || !productData) {
+      //   res.status(400).json({
+      //     success: false,
+      //     error: "Se requieren sucursalId y productData",
+      //   });
+      //   return;
+      // }
+
+      const sucursalIdNum = 24;
+      const wooController = createWooController();
+
+      if (!wooController) {
+        res.status(500).json({
+          success: false,
+          error: "No se pudo inicializar el controlador de WooCommerce",
+        });
+        return;
+      }
+
+      logger.info("Iniciando creación de producto en WooCommerce via API");
+
+      const result = await wooController.createProduct(
+        productData,
+        sucursalIdNum
+      );
+
+      res.json({
+        success: result.success,
+        message: result.success
+          ? "Producto creado exitosamente"
+          : "Error en la creación de producto",
+        data: {
+          product: result.productId,
+        },
+        timestamp: new Date().toISOString(),
+      });
+    } catch (error) {
+      logger.error("Error en creación de producto:", error);
+      res.status(500).json({
+        success: false,
+        error: "Error al crear producto",
+        message: error instanceof Error ? error.message : "Error desconocido",
+      });
+    }
+  }
+);
 
 /**
  * Actualizar productos comparando archivos JSON
