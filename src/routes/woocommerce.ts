@@ -13,7 +13,9 @@ import { WooCommerceConfig } from "../types";
 import {
   getAllSucursales,
   getCredencialesSucursal,
+  SUCURSALES_CREDENCIALES,
 } from "../config/sucursales_credenciales";
+import { log } from "console";
 
 const router = Router();
 
@@ -29,6 +31,11 @@ const createWooController = () => {
   }
 };
 
+router.post("/upload-products/", async (req: Request, res: Response) => {
+  try {
+    const wooController = createWooController();
+  } catch (error) {}
+});
 /**
  * Probar conexión con WooCommerce
  * GET /api/woocommerce/test-connection
@@ -73,46 +80,60 @@ router.get("/test-connection", async (req: Request, res: Response) => {
  * Carga completa de productos desde JSON
  * POST /api/woocommerce/upload-products
  */
-router.post("/upload-products", async (req: Request, res: Response) => {
-  try {
-    const { jsonFilePath } = req.body;
+router.post(
+  "/upload-products/:sucursalId",
+  async (req: Request, res: Response) => {
+    try {
+      const { sucursalId } = req.params;
+      const { jsonFilePath } = req.body;
+      if (!sucursalId || !jsonFilePath) {
+        res.status(400).json({
+          success: false,
+          error: "Se requieren sucursalId y jsonFilePath",
+        });
+        return;
+      }
+      const sucursalIdNum = parseInt(sucursalId);
+      const wooController = createWooController();
 
-    const wooController = createWooController();
+      if (!wooController) {
+        res.status(500).json({
+          success: false,
+          error: "No se pudo inicializar el controlador de WooCommerce",
+        });
+        return;
+      }
 
-    if (!wooController) {
+      logger.info("Iniciando carga de productos a WooCommerce via API");
+
+      const result = await wooController.uploadProductsFromJson(
+        jsonFilePath,
+        sucursalIdNum
+      );
+
+      res.json({
+        success: result.success,
+        message: result.success
+          ? "Productos cargados exitosamente"
+          : "Error en la carga de productos",
+        data: {
+          uploadedCount: result.uploadedCount,
+          failedCount: result.failedCount,
+          duration: result.duration,
+          errors: result.errors.slice(0, 10), // Solo los primeros 10 errores
+        },
+        timestamp: new Date().toISOString(),
+      });
+    } catch (error) {
+      logger.error("Error en carga de productos:", error);
       res.status(500).json({
         success: false,
-        error: "No se pudo inicializar el controlador de WooCommerce",
+        error: "Error al cargar productos",
+        message: error instanceof Error ? error.message : "Error desconocido",
       });
-      return;
     }
-
-    logger.info("Iniciando carga de productos a WooCommerce via API");
-
-    const result = await wooController.uploadProductsFromJson(jsonFilePath);
-
-    res.json({
-      success: result.success,
-      message: result.success
-        ? "Productos cargados exitosamente"
-        : "Error en la carga de productos",
-      data: {
-        uploadedCount: result.uploadedCount,
-        failedCount: result.failedCount,
-        duration: result.duration,
-        errors: result.errors.slice(0, 10), // Solo los primeros 10 errores
-      },
-      timestamp: new Date().toISOString(),
-    });
-  } catch (error) {
-    logger.error("Error en carga de productos:", error);
-    res.status(500).json({
-      success: false,
-      error: "Error al cargar productos",
-      message: error instanceof Error ? error.message : "Error desconocido",
-    });
   }
-});
+);
 
 /**
  * Actualizar productos comparando archivos JSON
@@ -120,7 +141,7 @@ router.post("/upload-products", async (req: Request, res: Response) => {
  */
 router.post("/update-products", async (req: Request, res: Response) => {
   try {
-    const wooController = createWooController();
+    const wooController = new WoocommerceController();
 
     if (!wooController) {
       res.status(500).json({
@@ -162,10 +183,11 @@ router.post("/update-products", async (req: Request, res: Response) => {
  * Listar todos los productos de WooCommerce
  * GET /api/woocommerce/products
  */
-router.get("/products", async (req: Request, res: Response) => {
+router.get("/products/:id", async (req: Request, res: Response) => {
   try {
-    const wooController = createWooController();
-
+    const wooController = new WoocommerceController();
+    const { id } = req.params;
+    logger.log("ID recibido:", id);
     if (!wooController) {
       res.status(500).json({
         success: false,
@@ -176,7 +198,7 @@ router.get("/products", async (req: Request, res: Response) => {
 
     logger.info("Obteniendo lista de productos de WooCommerce via API");
 
-    const result = await wooController.getAllProducts();
+    const result = await wooController.getAllProducts(parseInt(id!));
 
     if (result.success) {
       res.json({
@@ -206,69 +228,6 @@ router.get("/products", async (req: Request, res: Response) => {
 });
 
 /**
- * Obtener estadísticas de WooCommerce
- * GET /api/woocommerce/stats
- */
-router.get("/stats", async (req: Request, res: Response) => {
-  try {
-    const wooController = createWooController();
-
-    if (!wooController) {
-      res.status(500).json({
-        success: false,
-        error: "No se pudo inicializar el controlador de WooCommerce",
-      });
-      return;
-    }
-
-    const result = await wooController.getAllProducts();
-
-    if (result.success) {
-      // Calcular estadísticas básicas
-      const products = result.products;
-      const stats = {
-        totalProducts: products.length,
-        publishedProducts: products.filter((p) => p.status === "publish")
-          .length,
-        draftProducts: products.filter((p) => p.status === "draft").length,
-        inStockProducts: products.filter((p) => p.stock_status === "instock")
-          .length,
-        outOfStockProducts: products.filter(
-          (p) => p.stock_status === "outofstock"
-        ).length,
-        averagePrice:
-          products.length > 0
-            ? products.reduce(
-                (sum, p) => sum + (parseFloat(p.regular_price) || 0),
-                0
-              ) / products.length
-            : 0,
-      };
-
-      res.json({
-        success: true,
-        message: "Estadísticas obtenidas exitosamente",
-        data: stats,
-        timestamp: new Date().toISOString(),
-      });
-    } else {
-      res.status(500).json({
-        success: false,
-        error: result.error,
-        message: "Error al obtener estadísticas de WooCommerce",
-      });
-    }
-  } catch (error) {
-    logger.error("Error al obtener estadísticas:", error);
-    res.status(500).json({
-      success: false,
-      error: "Error al obtener estadísticas",
-      message: error instanceof Error ? error.message : "Error desconocido",
-    });
-  }
-});
-
-/**
  * RUTAS MULTI-SUCURSAL
  */
 
@@ -282,7 +241,7 @@ router.get("/sucursales", async (req: Request, res: Response) => {
 
     // Omitir información sensible como secretos
     const sucursalesSafe = sucursales.map((sucursal) => ({
-      //sucursal_id: sucursal.sucursal_id,
+      sucursal_id: 1,
       nombre: sucursal.nombre,
       url: sucursal.credenciales.url,
       // No incluir consumerKey ni consumerSecret por seguridad

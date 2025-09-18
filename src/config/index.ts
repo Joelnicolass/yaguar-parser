@@ -57,7 +57,7 @@ export const config: AppConfig = {
     port: parseInt(process.env.SFTP_PORT || "22"),
     remotePath:
       process.env.SFTP_REMOTE_PATH ||
-      "/var/www/vhosts/vd.com.ar/httpdocs/ftp-incoming",
+      "/var/www/vhosts/vd.com.ar/ftp-incoming/uploads", // reemplazar httpdocs/ftp-incoming por  ftp-incoming/uploads
     filePattern: process.env.SFTP_FILE_PATTERN || "*.*",
     timeout: parseInt(process.env.SFTP_TIMEOUT || "30000"),
   } as SFTPConfig,

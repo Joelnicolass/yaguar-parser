@@ -27,6 +27,7 @@ import {
 import {
   CategoriaReferencia,
   CATEGORIAS_POR_ID,
+  CATEGORIAS_POR_ID_AUTOPISTA,
 } from "../../config/categorias_referencia";
 
 interface WooCommerceProductFromSucursal {
@@ -35,7 +36,7 @@ interface WooCommerceProductFromSucursal {
   regular_price: string;
   description: string;
   short_description: string;
-  categories: Array<CategoriaReferencia>;
+  categories: Array<{ id: number }>;
   type: string;
   status: string;
   manage_stock?: boolean;
@@ -207,13 +208,23 @@ export class SucursalService {
       const imageUrl = `https://shop.yaguar.com.ar/common/img/Productos/${producto.sku}/250x250.jpg`;
 
       // Filtrar categorías para evitar 'undefined'
-      const categoria = CATEGORIAS_POR_ID[producto.meta_data];
-      const categories: CategoriaReferencia[] = categoria ? [categoria] : [];
+      const categoriaDefault = CATEGORIAS_POR_ID[producto.meta_data];
+      // Realizar una busqueda de la categoria por nombre en el objeto categorias_por_id_autopista
+      // Si no se encuentra, asignar una categoría por defecto (ID 999)
+      const categoriaWoocommerce = Object.values(
+        CATEGORIAS_POR_ID_AUTOPISTA
+      ).find(
+        (cat) =>
+          cat.name.toLowerCase() === categoriaDefault?.name.trim().toLowerCase()
+      );
+      const categories: Array<{ id: number }> = categoriaWoocommerce
+        ? [{ id: categoriaWoocommerce.id }]
+        : [];
 
       return {
-        sku: producto.sku.toString(),
+        sku: `${producto.sku}`,
         name: productName,
-        regular_price: producto.regular_price.toString(),
+        regular_price: `${producto.regular_price}`,
         description: cleanDescription,
         short_description: cleanShortDescription,
         categories,
@@ -226,11 +237,11 @@ export class SucursalService {
           },
         ],
         meta_data: [
-          { key: "_sucursal_id", value: sucursalInfo.id },
-          { key: "_sucursal_nombre", value: sucursalInfo.nombre },
-          { key: "_meta_data_original", value: producto.meta_data },
-          { key: "_meta_data_2_original", value: producto.meta_data_2 },
-          { key: "_unidad_medida", value: producto.meta_data_2.trim() },
+          { key: "_sucursal_id", value: `${sucursalInfo.id}` },
+          { key: "_sucursal_nombre", value: `${sucursalInfo.nombre}` },
+          { key: "_meta_data_original", value: `${producto.meta_data}` },
+          { key: "_meta_data_2_original", value: `${producto.meta_data_2}` },
+          { key: "_unidad_medida", value: `${producto.meta_data_2.trim()}` },
           { key: "_image_url", value: imageUrl }, // Guardar URL de imagen en metadatos también
         ],
       };

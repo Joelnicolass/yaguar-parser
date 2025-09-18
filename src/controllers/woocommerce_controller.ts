@@ -26,6 +26,7 @@ import {
   getSucursalIdByFilename,
 } from "../config/sucursales_credenciales";
 import { SucursalService } from "../services/sucursal/sucursal_service";
+import { CATEGORIAS_POR_ID } from "../config/categorias_referencia";
 
 // Interfaces para tipado
 interface WooCommerceProduct {
@@ -165,6 +166,53 @@ export class WoocommerceController {
   }
 
   /**
+   *  Cargar la lista de categorias que existe en categorias_referencia.ts
+   *
+   */
+  public async crearCategorias(sucursalId: number) {
+    const wooInstance = this.getWooCommerceInstance(sucursalId);
+    if (!wooInstance) {
+      logger.error(
+        `❌ No se pudo obtener instancia de WooCommerce para sucursal ${sucursalId}`
+      );
+      return;
+    }
+    let newcategoriesIds: number[] = [];
+
+    for (const key of Object.keys(CATEGORIAS_POR_ID)) {
+      const cat = CATEGORIAS_POR_ID[Number(key)];
+      if (!cat) {
+        logger.warn(`⚠️ Categoría con ID ${key} no encontrada en referencia`);
+        continue;
+      }
+      try {
+        const res = await wooInstance.post("products/categories", {
+          name: cat.name,
+          slug: cat.slug,
+          // podés definir parent si necesitás jerarquía:
+          // parent: algun_id
+        });
+        console.log(
+          `✅ Categoría creada: ${res.data.name} (ID WooCommerce: ${res.data.id})`
+        );
+        newcategoriesIds.push(res.data.id);
+      } catch (error: any) {
+        if (error.response?.status === 400) {
+          console.warn(`⚠️ Ya existe la categoría: ${cat.name}`);
+          logger.debug(
+            error.response?.data || error.message || "Error desconocido"
+          );
+        } else {
+          console.error(
+            `❌ Error creando ${cat.name}:`,
+            error.response?.data || error.message
+          );
+        }
+      }
+    }
+  }
+
+  /**
    * Carga completa de productos desde archivo JSON de sucursal específica
    * Lee el archivo JSON de una sucursal y sube todos los productos a su instancia de WooCommerce
    */
@@ -211,6 +259,8 @@ export class WoocommerceController {
           `No se pudo inicializar WooCommerce para sucursal ${sucursal_id}`
         );
       }
+      // Crear categorías primero (si no existen)
+      await this.crearCategorias(sucursal_id);
 
       // Procesar productos en lotes para evitar sobrecarga de la API
       const batchSize = 10;
@@ -218,7 +268,7 @@ export class WoocommerceController {
       const product = SucursalService.convertToWooCommerceFormat(productos, {
         id: sucursal_id,
         nombre: nombre_sucursal,
-      });
+      }).slice(0, 3);
 
       for (let i = 0; i < product.length; i += batchSize) {
         const batch = product.slice(i, i + batchSize);
@@ -242,23 +292,36 @@ export class WoocommerceController {
                   sku: wooProduct.sku,
                   per_page: 1,
                 });
+
                 if (existingProducts.data && existingProducts.data.length > 0) {
                   const existingProduct = existingProducts.data[0];
                   // Remover el SKU del update
-
+                  logger.debug(
+                    `Productos existentes encontrados: ${existingProducts.data[0]}`
+                  );
                   const updateData = {
                     ...wooProduct,
                     sku: undefined,
                   };
 
+                  logger.debug(
+                    `Actualizando producto existente en ${nombre_sucursal}: ${existingProduct.name} (SKU: ${existingProduct.sku})`
+                  );
                   response = await wooInstance.put(
                     `products/${existingProduct.id}`,
                     updateData
                   );
+                  logger.debug(`Producto existente actualizado`);
                 } else {
+                  logger.error(
+                    `No se encontró producto existente en ${nombre_sucursal} con SKU: ${wooProduct.sku}`
+                  );
                   throw error;
                 }
               } else {
+                logger.error(
+                  `Error al crear producto ${wooProduct.sku} en ${nombre_sucursal}: ${error.message}`
+                );
                 throw error;
               }
             }
@@ -279,10 +342,6 @@ export class WoocommerceController {
               error instanceof Error ? error.message : "Error desconocido";
             errors.push(
               `Error al procesar producto ${producto.sku} en ${nombre_sucursal}: ${errorMsg}`
-            );
-            logger.error(
-              `❌ Error al crear producto ${producto.sku} en ${nombre_sucursal}:`,
-              error
             );
           }
         });
@@ -472,7 +531,7 @@ export class WoocommerceController {
 
     try {
       // Usar la ruta proporcionada o construir la ruta por defecto
-      const filePath = jsonFilePath || this.getLatestJsonFilePath();
+      const filePath = jsonFilePath || "";
 
       logger.info("🚀 Iniciando carga completa de productos desde JSON", {
         filePath,

@@ -28,6 +28,7 @@ import {
   SucursalCredenciales,
   SUCURSALES_CREDENCIALES,
 } from "../../config/sucursales_credenciales";
+import { fstatSync } from "fs";
 
 export class SchedulerService {
   private static syncTask: cron.ScheduledTask | null = null;
@@ -295,7 +296,7 @@ export class SchedulerService {
       logger.info("🔍 Validando archivo antes del parsing...", { fileName });
 
       // Validación 1: Extensión del archivo
-      const allowedExtensions = [".asc", ".txt", ".csv"];
+      const allowedExtensions = [".asc", ".txt", ".csv", ".json"];
       const fileExt = path.extname(fileName).toLowerCase();
 
       if (!allowedExtensions.includes(fileExt)) {
@@ -344,103 +345,81 @@ export class SchedulerService {
     logger.info("🔄 Ejecutando sincronización automática completa...");
 
     const startTime = Date.now();
-
+    const connectionResult = await SftpService.connect();
     try {
       // Fase 1: Conectar y descargar desde SFTP
       logger.info("📡 Fase 1: Conectando al servidor SFTP...");
-      const downloadResult = await SftpService.downloadLatestFileComplete();
+      // const downloadResult = await SftpService.downloadLatestFileComplete();
+      const res = await SftpService.listFiles();
 
-      if (!downloadResult.success) {
-        throw new Error(`Error en descarga SFTP: ${downloadResult.error}`);
+      if (!res.success) {
+        throw new Error(`Error al listar archivos en SFTP: ${res.error}`);
+      }
+      if (!res.files || res.files.length === 0) {
+        throw new Error("No se encontraron archivos en el servidor SFTP");
       }
 
-      logger.info("✅ Archivo descargado desde SFTP", {
-        fileName: downloadResult.fileName,
-        fileSize: downloadResult.fileSize,
-        downloadTime: downloadResult.downloadTime,
+      logger.info(`Total de archivos encontrados en SFTP: ${res.files.length}`);
+
+      // Filtrar y descargar solo archivos .json
+      const jsonFiles = res.files.filter((file) => file.name.endsWith(".json"));
+      const downloadedJsonFiles = [];
+      const startTime = new Date().getTime();
+      for (const file of jsonFiles) {
+        if (file.name.endsWith(".json")) {
+          const downloadRes = await SftpService.downloadFile(file.name);
+          if (downloadRes.success) {
+            downloadedJsonFiles.push(downloadRes.localPath);
+            logger.info(`Archivo JSON descargado: ${file.name}`);
+          } else {
+            logger.error(
+              `Error al descargar archivo ${file.name}: ${downloadRes.error}`
+            );
+          }
+        }
+      }
+      logger.info("Descarga de archivos JSON completada", {
+        total: downloadedJsonFiles.length,
+        downloadTime: Date.now() - startTime,
       });
 
-      logger.info("🔍 Fase 1.5: Validando archivo descargado...");
-
-      if (!downloadResult.fileName) {
-        throw new Error("No se obtuvo el nombre del archivo descargado");
-      }
-
-      // const validation = SchedulerService.validateFileForParsing(
-      //   downloadResult.fileName
-      // );
-
-      // if (!validation.valid) {
-      //   throw new Error(
-      //     `Archivo no válido para procesamiento: ${validation.reason}`
-      //   );
-      // }
+      logger.info("✅ Archivos descargados desde SFTP", {
+        fileName: downloadedJsonFiles,
+        downloadTime: Date.now() - startTime,
+      });
 
       logger.info("✅ Archivo validado - Continuando con el procesamiento");
 
-      const LOCAL_PATH = downloadResult.localPath;
+      const LOCAL_PATH = downloadedJsonFiles;
       logger.info({ LOCAL_PATH });
 
-      // Descomprimir el archivo
-      logger.info("🗜️ Fase 2: Descomprimiendo archivo...");
-      const unzipped = await CompressionService.extractAndReturnAllFiles(
-        LOCAL_PATH
-      );
+      // // Descomprimir el archivo
+      // logger.info("🗜️ Fase 2: Descomprimiendo archivo...");
+      // const unzipped = await CompressionService.extractAndReturnAllFiles(
+      //   LOCAL_PATH
+      // );
 
-      if (!unzipped.success || !unzipped.extractionPath) {
-        throw new Error(`Error al descomprimir: ${unzipped.error}`);
-      }
+      // if (!unzipped.success || !unzipped.extractionPath) {
+      //   throw new Error(`Error al descomprimir: ${unzipped.error}`);
+      // }
 
-      logger.info("✅ Archivo descomprimido", {
-        extractionPath: unzipped.extractionPath,
-        extractedFiles: unzipped.extractedFiles,
-        extractedFilesFullPath: unzipped.extracetedFilesFullPath,
-        duration: unzipped.duration,
-      });
+      // logger.info("✅ Archivo descomprimido", {
+      //   extractionPath: unzipped.extractionPath,
+      //   extractedFiles: unzipped.extractedFiles,
+      //   extractedFilesFullPath: unzipped.extracetedFilesFullPath,
+      //   duration: unzipped.duration,
+      // });
 
       // refactorizar esto -> es una negrada
       const wooController = new WoocommerceController();
 
       const result = await wooController.uploadProductsFromMultipleSucursales(
-        unzipped.extracetedFilesFullPath!
+        downloadedJsonFiles
       );
 
       logger.info("✅ Productos sincronizados a WooCommerce", {
         ...result,
       });
-
-      /*  const credentials: SucursalCredenciales["credenciales"][] = [];
-
-      Object.keys(SUCURSALES_CREDENCIALES).forEach((key) => {
-        if (!SUCURSALES_CREDENCIALES[parseInt(key)]) return;
-
-        return credentials.push(
-          SUCURSALES_CREDENCIALES[parseInt(key)]!.credenciales
-        );
-      });
- */
-      // factory de controllers - cada controller es una sucursal
-
-      /* const woocommerceControllers = credentials.map(
-        (cred) => new WoocommerceController(cred)
-      );
-
-      logger.info(
-        `✅ Inicializados ${woocommerceControllers.length} controladores de WooCommerce`
-      ); */
-
-      // Fase 3: SINCRONIZAR A WOO
-
-      /* let promises: Promise<any>[] = [];
-
-      woocommerceControllers.forEach((wcController) => {
-        const archivoSucursal = SUCURSAL_ID_A_ARCHIVO[wcController.sucursalId!];
-        promises.push(
-          wcController.uploadProductsFromSucursalJson(archivoSucursal!)
-        );
-      });
-
-      await Promise.all(promises); */
 
       const duration = Date.now() - startTime;
       logger.info("✅ Sincronización automática completada exitosamente", {
