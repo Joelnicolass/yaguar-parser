@@ -113,7 +113,6 @@ const startServer = async () => {
         SchedulerService.start(); */
         // para testear que se inicialice inmediatamente
         SchedulerService.DEBUG_executeImmediateSync();
-
         logger.info("✅ Sistema de cron jobs inicializado y activado");
       } catch (error) {
         logger.error("❌ Error al inicializar sistema de cron jobs:", error);

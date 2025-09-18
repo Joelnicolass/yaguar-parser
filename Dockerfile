@@ -78,7 +78,7 @@ ENV TZ=America/Argentina/Buenos_Aires
 # Variables de entorno para SFTP
 ENV SFTP_HOST=209.46.122.76
 ENV SFTP_USER=vd.com.ar_6lq2mbft7aw
-#ENV SFTP_PASSWORD=aB6_o?kc2JlcSu5ol
+ENV SFTP_PASSWORD=aB6_o?kc2JlcSu5ol
 ENV SFTP_PORT=22
 ENV SFTP_TIMEOUT=30000
 
@@ -91,9 +91,146 @@ ENV LOG_MAX_FILES=5
 
 # Variables de entorno para WooCommerce
 ENV WOOCOMMERCE_URL=https://vd.com.ar/
-#ENV WOOCOMMERCE_CONSUMER_KEY=ack_10cdee11ebf5fcd81e9cd7cbb18628a9670e2278
-#ENV WOOCOMMERCE_CONSUMER_SECRET=acs_15b094700dd1d9372dae238e2b8cbc8b629d187c
+ENV WOOCOMMERCE_CONSUMER_KEY=ack_10cdee11ebf5fcd81e9cd7cbb18628a9670e2278
+ENV WOOCOMMERCE_CONSUMER_SECRET=acs_15b094700dd1d9372dae238e2b8cbc8b629d187c
 ENV WOOCOMMERCE_VERSION=wc/v3
+
+# ============================================
+# VARIABLES DE ENTORNO PARA SUCURSALES
+# ============================================
+
+# Sucursal 3 - Campana
+ENV WOOCOMMERCE_CAMPANA_SUCURSAL_ID=3
+ENV WOOCOMMERCE_CAMPANA_NOMBRE=Campana
+ENV WOOCOMMERCE_CAMPANA_URL=https://campana.example.com
+ENV WOOCOMMERCE_CAMPANA_KEY=ck_campana_key
+ENV WOOCOMMERCE_CAMPANA_SECRET=cs_campana_secret
+
+# Sucursal 4 - José C. Paz
+ENV WOOCOMMERCE_JOSECPAZ_SUCURSAL_ID=4
+ENV WOOCOMMERCE_JOSECPAZ_NOMBRE="José C. Paz"
+ENV WOOCOMMERCE_JOSECPAZ_URL=https://josecpaz.example.com
+ENV WOOCOMMERCE_JOSECPAZ_KEY=ck_josecpaz_key
+ENV WOOCOMMERCE_JOSECPAZ_SECRET=cs_josecpaz_secret
+
+# Sucursal 5 - Santa Fe
+ENV WOOCOMMERCE_SANTAFE_SUCURSAL_ID=5
+ENV WOOCOMMERCE_SANTAFE_NOMBRE="Santa Fe"
+ENV WOOCOMMERCE_SANTAFE_URL=https://santafe.example.com
+ENV WOOCOMMERCE_SANTAFE_KEY=ck_santafe_key
+ENV WOOCOMMERCE_SANTAFE_SECRET=cs_santafe_secret
+
+# Sucursal 6 - Córdoba
+ENV WOOCOMMERCE_CORDOBA_SUCURSAL_ID=6
+ENV WOOCOMMERCE_CORDOBA_NOMBRE=Córdoba
+ENV WOOCOMMERCE_CORDOBA_URL=https://cordoba.example.com
+ENV WOOCOMMERCE_CORDOBA_KEY=ck_cordoba_key
+ENV WOOCOMMERCE_CORDOBA_SECRET=cs_cordoba_secret
+
+# Sucursal 8 - Neuquén
+ENV WOOCOMMERCE_NEUQUEN_SUCURSAL_ID=8
+ENV WOOCOMMERCE_NEUQUEN_NOMBRE=Neuquén
+ENV WOOCOMMERCE_NEUQUEN_URL=https://neuquen.example.com
+ENV WOOCOMMERCE_NEUQUEN_KEY=ck_neuquen_key
+ENV WOOCOMMERCE_NEUQUEN_SECRET=cs_neuquen_secret
+
+# Sucursal 9 - Salta
+ENV WOOCOMMERCE_SALTA_SUCURSAL_ID=9
+ENV WOOCOMMERCE_SALTA_NOMBRE=Salta
+ENV WOOCOMMERCE_SALTA_URL=https://salta.example.com
+ENV WOOCOMMERCE_SALTA_KEY=ck_salta_key
+ENV WOOCOMMERCE_SALTA_SECRET=cs_salta_secret
+
+# Sucursal 10 - Autopista (ACTIVA)
+ENV WOOCOMMERCE_AUTOPISTA_SUCURSAL_ID=10
+ENV WOOCOMMERCE_AUTOPISTA_NOMBRE=Autopista
+ENV WOOCOMMERCE_AUTOPISTA_URL=https://vd.com.ar/autopista/
+ENV WOOCOMMERCE_AUTOPISTA_KEY=ck_b8b7f2a38e22994892730e89183dffa93e2b5ce8
+ENV WOOCOMMERCE_AUTOPISTA_SECRET=cs_4d33915c9a51648c93ef33a25f6e7cc8a205537b
+
+# Sucursal 12 - Mar del Plata
+ENV WOOCOMMERCE_MARDELPLATA_SUCURSAL_ID=12
+ENV WOOCOMMERCE_MARDELPLATA_NOMBRE="Mar del Plata"
+ENV WOOCOMMERCE_MARDELPLATA_URL=https://mardelplata.example.com
+ENV WOOCOMMERCE_MARDELPLATA_KEY=ck_mardelplata_key
+ENV WOOCOMMERCE_MARDELPLATA_SECRET=cs_mardelplata_secret
+
+# Sucursal 13 - Bahía Blanca
+ENV WOOCOMMERCE_BAHIABLANCA_SUCURSAL_ID=13
+ENV WOOCOMMERCE_BAHIABLANCA_NOMBRE="Bahía Blanca"
+ENV WOOCOMMERCE_BAHIABLANCA_URL=https://bahiablanca.example.com
+ENV WOOCOMMERCE_BAHIABLANCA_KEY=ck_bahiablanca_key
+ENV WOOCOMMERCE_BAHIABLANCA_SECRET=cs_bahiablanca_secret
+
+# Sucursal 14 - Mendoza
+ENV WOOCOMMERCE_MENDOZA_SUCURSAL_ID=14
+ENV WOOCOMMERCE_MENDOZA_NOMBRE=Mendoza
+ENV WOOCOMMERCE_MENDOZA_URL=https://mendoza.example.com
+ENV WOOCOMMERCE_MENDOZA_KEY=ck_mendoza_key
+ENV WOOCOMMERCE_MENDOZA_SECRET=cs_mendoza_secret
+
+# Sucursal 15 - Chaco
+ENV WOOCOMMERCE_CHACO_SUCURSAL_ID=15
+ENV WOOCOMMERCE_CHACO_NOMBRE=Chaco
+ENV WOOCOMMERCE_CHACO_URL=https://chaco.example.com
+ENV WOOCOMMERCE_CHACO_KEY=ck_chaco_key
+ENV WOOCOMMERCE_CHACO_SECRET=cs_chaco_secret
+
+# Sucursal 16 - San Juan
+ENV WOOCOMMERCE_SANJUAN_SUCURSAL_ID=16
+ENV WOOCOMMERCE_SANJUAN_NOMBRE="San Juan"
+ENV WOOCOMMERCE_SANJUAN_URL=https://sanjuan.example.com
+ENV WOOCOMMERCE_SANJUAN_KEY=ck_sanjuan_key
+ENV WOOCOMMERCE_SANJUAN_SECRET=cs_sanjuan_secret
+
+# Sucursal 18 - Moreno
+ENV WOOCOMMERCE_MORENO_SUCURSAL_ID=18
+ENV WOOCOMMERCE_MORENO_NOMBRE=Moreno
+ENV WOOCOMMERCE_MORENO_URL=https://moreno.example.com
+ENV WOOCOMMERCE_MORENO_KEY=ck_moreno_key
+ENV WOOCOMMERCE_MORENO_SECRET=cs_moreno_secret
+
+# Sucursal 19 - Maschwitz
+ENV WOOCOMMERCE_MASCHWITZ_SUCURSAL_ID=19
+ENV WOOCOMMERCE_MASCHWITZ_NOMBRE=Maschwitz
+ENV WOOCOMMERCE_MASCHWITZ_URL=https://maschwitz.example.com
+ENV WOOCOMMERCE_MASCHWITZ_KEY=ck_maschwitz_key
+ENV WOOCOMMERCE_MASCHWITZ_SECRET=cs_maschwitz_secret
+
+# Sucursal 20 - General Roca
+ENV WOOCOMMERCE_GRALROCA_SUCURSAL_ID=20
+ENV WOOCOMMERCE_GRALROCA_NOMBRE="General Roca"
+ENV WOOCOMMERCE_GRALROCA_URL=https://gralroca.example.com
+ENV WOOCOMMERCE_GRALROCA_KEY=ck_gralroca_key
+ENV WOOCOMMERCE_GRALROCA_SECRET=cs_gralroca_secret
+
+# Sucursal 21 - Posadas
+ENV WOOCOMMERCE_POSADAS_SUCURSAL_ID=21
+ENV WOOCOMMERCE_POSADAS_NOMBRE=Posadas
+ENV WOOCOMMERCE_POSADAS_URL=https://posadas.example.com
+ENV WOOCOMMERCE_POSADAS_KEY=ck_posadas_key
+ENV WOOCOMMERCE_POSADAS_SECRET=cs_posadas_secret
+
+# Sucursal 22 - Trelew
+ENV WOOCOMMERCE_TRELEW_SUCURSAL_ID=22
+ENV WOOCOMMERCE_TRELEW_NOMBRE=Trelew
+ENV WOOCOMMERCE_TRELEW_URL=https://trelew.example.com
+ENV WOOCOMMERCE_TRELEW_KEY=ck_trelew_key
+ENV WOOCOMMERCE_TRELEW_SECRET=cs_trelew_secret
+
+# Sucursal 23 - Jujuy
+ENV WOOCOMMERCE_JUJUY_SUCURSAL_ID=23
+ENV WOOCOMMERCE_JUJUY_NOMBRE=Jujuy
+ENV WOOCOMMERCE_JUJUY_URL=https://jujuy.example.com
+ENV WOOCOMMERCE_JUJUY_KEY=ck_jujuy_key
+ENV WOOCOMMERCE_JUJUY_SECRET=cs_jujuy_secret
+
+# Sucursal 24 - Chacabuco (ACTIVA)
+ENV WOOCOMMERCE_CHACABUCO_SUCURSAL_ID=24
+ENV WOOCOMMERCE_CHACABUCO_NOMBRE=Chacabuco
+ENV WOOCOMMERCE_CHACABUCO_URL=https://vd.com.ar/
+ENV WOOCOMMERCE_CHACABUCO_KEY=ck_2ebb13760100741f2da793984ae114e2cf588114
+ENV WOOCOMMERCE_CHACABUCO_SECRET=cs_b808157442282d9aa1b023f2052e7c48285f516f
 
 # Configurar zona horaria
 RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
@@ -168,22 +305,3 @@ CMD ["node", "dist/index.js"]
 
 # Detener y eliminar contenedor e imagen (si es necesario)
 # docker stop nombre-servidora
-# docker rm nombre-servidor
-# docker rmi usuario/repositorio:latest
-
-# Eliminar todos los contenedores detenidos
-# docker rm $(docker ps -a -q)
-
-# Eliminar todas las imágenes
-# docker rmi $(docker images -a -q)
-
-# descargar archivo de imagen de docker para subir a servidor sin internet
-# docker save -o yaguar-sync.tar joelnicolass/yaguar-sync
-
-# amd64
-# docker buildx build --platform linux/amd64 -t yaguar-sync:amd64 --load .
-# docker save -o yaguar-sync_amd64.tar yaguar-sync:amd64
-
-# arm64
-# docker buildx build --platform linux/arm64 -t yaguar-sync:arm64 --load .
-# docker save -o yaguar-sync_arm64.tar yaguar-sync:arm64
