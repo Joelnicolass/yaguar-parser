@@ -308,101 +308,32 @@ export class WoocommerceController {
         nombre: nombre_sucursal,
       }); // Limitar a 500 productos para pruebas
 
-      for (let i = 0; i < product.length; i += batchSize) {
-        const batch = product.slice(i, i + batchSize);
+      const totalBatches = Math.ceil(product.length / batchSize);
+
+      for (let batchIndex = 0; batchIndex < totalBatches; batchIndex++) {
+        const start = batchIndex * batchSize;
+        const end = start + batchSize;
+        const batch = product.slice(start, end);
 
         try {
           const resp = await wooInstance.post("products/batch", {
             create: batch,
           });
-          logger.debug(`😎 Batch procesado: ${resp.data} productos creados`);
+          logger.debug(
+            `😎 Batch ${batchIndex + 1}/${totalBatches} procesado: ${
+              batch.length
+            } productos creados`
+          );
         } catch (error) {
           logger.error(`❌ Error en batch de productos:`, error);
         }
-        // Procesar cada producto del lote
-        // const batchPromises = batch.map(async (producto) => {
-        //   try {
-        //     const wooProduct = producto;
-        //     // Crear producto en WooCommerce de la sucursal
-        //     let response;
-        //     try {
-        //       response = await wooInstance.post("products", wooProduct);
-        //     } catch (error: any) {
-        //       // Si el error es por SKU duplicado, intentar actualizar el producto existente
-        //       if (error.response?.data?.code === "product_invalid_sku") {
-        //         logger.warn(
-        //           `SKU ${wooProduct.sku} ya existe, intentando actualizar...`
-        //         );
-        //         // Buscar el producto por SKU
-        //         const existingProducts = await wooInstance.get("products", {
-        //           sku: wooProduct.sku,
-        //           per_page: 1,
-        //         });
 
-        //         if (existingProducts.data && existingProducts.data.length > 0) {
-        //           const existingProduct = existingProducts.data[0];
-        //           // Remover el SKU del update
-        //           logger.debug(
-        //             `Productos existentes encontrados: ${existingProducts.data[0]}`
-        //           );
-        //           const updateData = {
-        //             ...wooProduct,
-        //             sku: undefined,
-        //           };
-
-        //           logger.debug(
-        //             `Actualizando producto existente en ${nombre_sucursal}: ${existingProduct.name} (SKU: ${existingProduct.sku})`
-        //           );
-        //           response = await wooInstance.put(
-        //             `products/${existingProduct.id}`,
-        //             updateData
-        //           );
-        //           logger.debug(`Producto existente actualizado`);
-        //         } else {
-        //           logger.error(
-        //             `No se encontró producto existente en ${nombre_sucursal} con SKU: ${wooProduct.sku}`
-        //           );
-        //           throw error;
-        //         }
-        //       } else {
-        //         logger.error(
-        //           `Error al crear producto ${wooProduct.sku} en ${nombre_sucursal}: ${error.message}`
-        //         );
-        //         throw error;
-        //       }
-        //     }
-        //     if (response.status === 201) {
-        //       uploadedCount++;
-        //       logger.debug(
-        //         `✅ Producto creado en ${nombre_sucursal}: ${wooProduct.name} (SKU: ${wooProduct.sku})`
-        //       );
-        //     } else {
-        //       failedCount++;
-        //       errors.push(
-        //         `Error al crear producto ${wooProduct.sku} en ${nombre_sucursal}: Status ${response.status}`
-        //       );
-        //     }
-        //   } catch (error) {
-        //     failedCount++;
-        //     const errorMsg =
-        //       error instanceof Error ? error.message : "Error desconocido";
-        //     errors.push(
-        //       `Error al procesar producto ${producto.sku} en ${nombre_sucursal}: ${errorMsg}`
-        //     );
-        //   }
-        // });
-
-        // Esperar a que termine el lote antes de procesar el siguiente
-        // await Promise.all(resp);
-
-        // Pausa breve entre lotes para no sobrecargar la API
         await new Promise((resolve) => setTimeout(resolve, 200));
 
         logger.info(
-          `📊 Progreso ${nombre_sucursal}: ${Math.min(
-            i + batchSize,
+          `📊 Progreso ${nombre_sucursal}: ${Math.min(end, productos.length)}/${
             productos.length
-          )}/${productos.length} productos procesados`
+          } productos procesados`
         );
       }
 
