@@ -305,3 +305,14 @@ CMD ["node", "dist/index.js"]
 
 # Detener y eliminar contenedor e imagen (si es necesario)
 # docker stop nombre-servidora
+
+# descargar archivo de imagen de docker para subir a servidor sin internet
+# docker save -o yaguar-sync.tar joelnicolass/yaguar-sync
+
+# amd64
+# docker buildx build --platform linux/amd64 -t yaguar-sync:amd64 --load .
+# docker save -o yaguar-sync_amd64.tar yaguar-sync:amd64
+
+# arm64
+# docker buildx build --platform linux/arm64 -t yaguar-sync:arm64 --load .
+# docker save -o yaguar-sync_arm64.tar yaguar-sync:arm64
