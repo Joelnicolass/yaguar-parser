@@ -111,6 +111,19 @@ export async function executeUpload(): Promise<void> {
   }
 }
 
+export async function executeDelete(sucursalId: number): Promise<void> {
+  const startTime = Date.now();
+  try {
+    const result = await deleteAllProductsFromSucursal(sucursalId);
+    console.log(JSON.stringify(result, null, 2));
+  } catch (error) {
+    throw error;
+  } finally {
+    const duration = Date.now() - startTime;
+    console.log(`Proceso de borrado finalizado en ${duration} ms`);
+  }
+}
+
 async function uploadProductsFromMultipleSucursales(
   sucursalFilePaths: string[]
 ): Promise<{
@@ -581,4 +594,71 @@ function convertToWooCommerceFormat(
       ],
     };
   });
+}
+
+async function deleteAllProductsFromSucursal(
+  sucursalId: number
+): Promise<{ success: boolean; deleted: number; errors: string[] }> {
+  const wooInstance = getWooCommerceInstance(sucursalId);
+  if (!wooInstance) {
+    throw new Error(
+      `No se pudo inicializar WooCommerce para sucursal ${sucursalId}`
+    );
+  }
+
+  let totalDeleted = 0;
+  const errors: string[] = [];
+  const perPage = 100;
+
+  console.log(`🗑️ Iniciando borrado de productos para sucursal ${sucursalId}`);
+
+  while (true) {
+    try {
+      // SIEMPRE arrancamos en page=1 porque la lista cambia al borrar
+      const response = await wooInstance.get("products", {
+        per_page: perPage,
+        page: 1,
+      });
+
+      const products = response.data;
+      if (!products || products.length === 0) break;
+
+      const ids = products.map((p: any) => p.id);
+
+      const deleteRes = await wooInstance.post("products/batch", {
+        delete: ids,
+      });
+
+      if (deleteRes.data && deleteRes.data.delete) {
+        totalDeleted += deleteRes.data.delete.length;
+        console.log(`✅ ${deleteRes.data.delete.length} productos borrados`);
+      }
+
+      if (deleteRes.data && deleteRes.data.error) {
+        deleteRes.data.error.forEach((err: any, index: number) => {
+          const id = ids[index];
+          errors.push(`ID ${id}: ${err.message || "Error al borrar"}`);
+        });
+      }
+
+      // Pequeño delay para no saturar
+      await new Promise((resolve) => setTimeout(resolve, 300));
+    } catch (err) {
+      console.error(`❌ Error en borrado:`, err);
+      errors.push(
+        err instanceof Error ? err.message : "Error desconocido en borrado"
+      );
+      break;
+    }
+  }
+
+  console.log(
+    `🧹 Borrado completado en sucursal ${sucursalId}: ${totalDeleted} eliminados`
+  );
+
+  return {
+    success: errors.length === 0,
+    deleted: totalDeleted,
+    errors,
+  };
 }

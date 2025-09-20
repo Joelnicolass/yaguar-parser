@@ -25,7 +25,7 @@ import { config } from "./config";
 import logger from "./utils/logger";
 import routes from "./routes";
 import { SchedulerService } from "./services/scheduler/scheduler_service";
-import { executeUpload } from "./services/master";
+import { executeDelete, executeUpload } from "./services/master";
 
 const app = express();
 
@@ -114,6 +114,8 @@ const startServer = async () => {
         SchedulerService.start(); */
         // para testear que se inicialice inmediatamente
         // SchedulerService.DEBUG_executeImmediateSync();
+        //executeUpload();
+
         executeUpload();
         logger.info("✅ Sistema de cron jobs inicializado y activado");
       } catch (error) {
