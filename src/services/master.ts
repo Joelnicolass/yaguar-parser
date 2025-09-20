@@ -2,6 +2,7 @@ import path from "path";
 import fs from "fs";
 import { SftpService } from "./sftp/sftp_service";
 import WooCommerceRestApi from "@woocommerce/woocommerce-rest-api";
+import axiosRetry from "axios-retry";
 import { getCredencialesSucursal } from "../config/sucursales_credenciales";
 import {
   CATEGORIAS_POR_ID,
@@ -13,18 +14,19 @@ import { SucursalData, SucursalProduct } from "../types";
 const CONFIG = {
   // Configuración de concurrencia y paralelismo
   CONCURRENCY: {
-    SUCURSALES_PARALELAS: 1, // Máximo sucursales procesadas en paralelo
-    BATCHES_PARALELOS_POR_SUCURSAL: 3, // Máximo batches paralelos por sucursal
-    IMAGENES_PARALELAS: 500, // Máximo verificaciones de imágenes en paralelo
+    SUCURSALES_PARALELAS: 10, // Máximo sucursales procesadas en paralelo
+    BATCHES_PARALELOS_POR_SUCURSAL: 6, // Máximo batches paralelos por sucursal
+    IMAGENES_PARALELAS: 1000, // Máximo verificaciones de imágenes en paralelo
     BUSQUEDAS_PARALELAS_UPDATES: 5, // Máximo búsquedas paralelas para updates
   },
 
   // Configuración de tamaños de batch
   BATCH_SIZES: {
     CREACION: 50, // Productos por batch para creación
-    ACTUALIZACION: 50, // Productos por batch para actualización
+    ACTUALIZACION: 25, // Productos por batch para actualización
     ELIMINACION: 100, // Productos por batch para eliminación
     PAGINACION_SKUS: 100, // Productos por página al obtener SKUs existentes
+    RETRY_BATCH: 20, // Tamaño más pequeño para reintentos
   },
 
   // Configuración de timeouts y delays
@@ -36,12 +38,19 @@ const CONFIG = {
     SKU_FETCH_DELAY: 100, // Delay entre páginas al obtener SKUs
     UPDATE_SEARCH_CHUNK_DELAY: 100, // Delay entre chunks de búsqueda
     DELETE_BATCH_DELAY: 300, // Delay entre batches de eliminación
+    SERVER_OVERLOAD_DELAY: 10000, // Delay para errores 503/502 (10 segundos)
+    RATE_LIMIT_DELAY: 5000, // Delay para errores 429 (5 segundos)
   },
 
   // Configuración de reintentos y límites
   RETRY: {
     MAX_RETRIES: 3, // Máximo reintentos por batch
     MAX_RESPONSE_TIMES_TRACKED: 5, // Cantidad de tiempos de respuesta a trackear
+    MAX_RETRIES_SERVER_ERROR: 5, // Máximo reintentos para errores 5xx
+    BACKOFF_MULTIPLIER: 1.5, // Multiplicador para backoff exponencial
+    // Configuración para axios-retry
+    AXIOS_RETRY_ATTEMPTS: 4, // Intentos de axios-retry
+    AXIOS_RETRY_DELAY: 2000, // Delay base para axios-retry
   },
 
   // Configuración de delays adaptativos
@@ -53,6 +62,7 @@ const CONFIG = {
     CHUNK_MIN_DELAY: 300, // Delay mínimo entre chunks (ms)
     CHUNK_MAX_DELAY: 1500, // Delay máximo entre chunks (ms)
     UPDATE_DELAY_DIVISOR: 2, // Divisor para delays de actualización
+    OVERLOAD_MULTIPLIER: 2, // Multiplicador cuando hay sobrecarga del servidor
   },
 
   // URLs y rutas
@@ -80,6 +90,13 @@ const CONFIG = {
   // Mensajes de error comunes
   ERROR_PATTERNS: {
     CONNECTION_ERRORS: ["socket hang up", "ECONNRESET", "timeout"],
+    SERVER_OVERLOAD_ERRORS: [
+      "503", // Service Unavailable
+      "502", // Bad Gateway
+      "504", // Gateway Timeout
+      "500", // Internal Server Error
+    ],
+    RATE_LIMIT_ERRORS: ["429"], // Too Many Requests
   },
 };
 
@@ -94,6 +111,29 @@ interface PerformanceMetrics {
 }
 
 const performanceMetrics = new Map<number, PerformanceMetrics>();
+
+// 🔄 SISTEMA DE TRACKING DE BATCHES FALLIDOS
+interface FailedBatchInfo {
+  products: WooCommerceProductFromSucursal[];
+  reason: string;
+  retryCount: number;
+  sucursalId: number;
+  batchType: "create" | "update";
+}
+
+// 🔄 SISTEMA DE TRACKING DE PRODUCTOS INDIVIDUALES FALLIDOS
+interface FailedProductInfo {
+  product: WooCommerceProductFromSucursal;
+  reason: string;
+  retryCount: number;
+  sucursalId: number;
+  sucursalName: string;
+  originalBatchNumber: number;
+  failureType: "validation" | "duplicate" | "category" | "data" | "unknown";
+}
+
+const failedBatches = new Map<string, FailedBatchInfo[]>();
+const failedProducts = new Map<string, FailedProductInfo[]>();
 
 interface WooCommerceProductFromSucursal {
   sku: string;
@@ -144,13 +184,51 @@ function initializeSucursalInstance(
       credenciales.credenciales.version || (CONFIG.WOOCOMMERCE.VERSION as any),
     axiosConfig: {
       timeout: CONFIG.TIMEOUTS.WOOCOMMERCE_TIMEOUT,
-      // Aumentado a 5 minutos para operaciones largas
+      // Configurar axios-retry directamente en axiosConfig
+      "axios-retry": {
+        retries: CONFIG.RETRY.AXIOS_RETRY_ATTEMPTS,
+        retryDelay: (retryCount: number) => {
+          console.log(
+            `🔄 Axios-retry: intento ${retryCount} en ${
+              CONFIG.RETRY.AXIOS_RETRY_DELAY * retryCount
+            }ms`
+          );
+          return CONFIG.RETRY.AXIOS_RETRY_DELAY * retryCount;
+        },
+        retryCondition: (error: any) => {
+          // Reintentar en errores de red o códigos 5xx específicos
+          const shouldRetry =
+            error.code === "ECONNRESET" ||
+            error.code === "ETIMEDOUT" ||
+            error.code === "ENOTFOUND" ||
+            (error.response?.status &&
+              CONFIG.ERROR_PATTERNS.SERVER_OVERLOAD_ERRORS.includes(
+                error.response.status.toString()
+              ));
+
+          if (shouldRetry) {
+            console.log(
+              `🔄 Axios-retry detectó error recuperable: ${
+                error.response?.status || error.message
+              }`
+            );
+          }
+
+          return shouldRetry;
+        },
+        onRetry: (retryCount: number, error: any) => {
+          console.log(
+            `🔄 Axios-retry: Reintentando request ${retryCount}/${
+              CONFIG.RETRY.AXIOS_RETRY_ATTEMPTS
+            } - ${error.response?.status || error.message}`
+          );
+        },
+      },
     },
   });
 
-  // Los reintentos se manejan a nivel de función, no necesitamos configurar axios-retry aquí
   console.log(
-    `✅ Instancia WooCommerce inicializada para sucursal ${sucursalId} con manejo de reintentos`
+    `✅ Instancia WooCommerce inicializada para sucursal ${sucursalId} con configuración de axios-retry`
   );
 
   woocommerceInstances.set(sucursalId, wooInstance);
@@ -508,9 +586,9 @@ async function processSingleBatch(
 
   const batchStartTime = Date.now();
 
-  // REINTENTOS para manejar errores de conexión
+  // REINTENTOS para manejar errores de conexión y sobrecarga del servidor
   let retryCount = 0;
-  const maxRetries = CONFIG.RETRY.MAX_RETRIES;
+  const maxRetries = CONFIG.RETRY.MAX_RETRIES_SERVER_ERROR;
   let batchSuccess = false;
 
   while (retryCount < maxRetries && !batchSuccess) {
@@ -569,43 +647,476 @@ async function processSingleBatch(
       }
 
       return { uploadedCount, failedCount, errors };
-    } catch (error) {
+    } catch (error: any) {
       retryCount++;
-      const errorMessage =
-        error instanceof Error ? error.message : "Error desconocido";
+      const errorMessage = error?.message || "Error desconocido";
+      const errorStatus = error?.response?.status?.toString() || "";
+
+      // 🔄 CLASIFICAR TIPO DE ERROR PARA APLICAR ESTRATEGIA APROPIADA
+      let waitTime = CONFIG.TIMEOUTS.RETRY_BASE_DELAY;
+      let shouldRetry = true;
+      let errorType = "desconocido";
 
       if (
         CONFIG.ERROR_PATTERNS.CONNECTION_ERRORS.some((pattern) =>
           errorMessage.includes(pattern)
         )
       ) {
-        console.warn(
-          `⚠️ Error de conexión en batch ${batchNumber}, intento ${retryCount}/${maxRetries}: ${errorMessage}`
+        errorType = "conexión";
+        waitTime = retryCount * CONFIG.TIMEOUTS.RETRY_BASE_DELAY;
+      } else if (
+        CONFIG.ERROR_PATTERNS.SERVER_OVERLOAD_ERRORS.some(
+          (pattern) => errorMessage.includes(pattern) || errorStatus === pattern
+        )
+      ) {
+        errorType = "sobrecarga del servidor (503/502/504)";
+        waitTime = Math.min(
+          retryCount *
+            CONFIG.TIMEOUTS.SERVER_OVERLOAD_DELAY *
+            CONFIG.RETRY.BACKOFF_MULTIPLIER,
+          30000 // Máximo 30 segundos
         );
 
-        if (retryCount < maxRetries) {
-          const waitTime = retryCount * CONFIG.TIMEOUTS.RETRY_BASE_DELAY;
-          console.log(
-            `⏳ Esperando ${waitTime}ms antes de reintentar batch ${batchNumber}...`
-          );
-          await new Promise((resolve) => setTimeout(resolve, waitTime));
-        } else {
-          console.error(
-            `❌ Error persistente en batch ${batchNumber} después de ${maxRetries} intentos`
-          );
-          failedCount += batch.length;
-          errors.push(`Error en batch ${batchNumber}: ${errorMessage}`);
+        // 🚨 Para errores 503, aumentar dramáticamente el delay adaptativo
+        if (errorStatus === "503") {
+          const currentMetrics = performanceMetrics.get(sucursalId);
+          if (currentMetrics) {
+            currentMetrics.avgResponseTime *=
+              CONFIG.ADAPTIVE_DELAYS.OVERLOAD_MULTIPLIER;
+            console.log(
+              `⚠️ Error 503 detectado: aumentando delays adaptativos x${CONFIG.ADAPTIVE_DELAYS.OVERLOAD_MULTIPLIER}`
+            );
+          }
         }
-      } else {
-        console.error(
-          `❌ Error no recuperable en batch ${batchNumber}:`,
-          error
+      } else if (
+        CONFIG.ERROR_PATTERNS.RATE_LIMIT_ERRORS.some(
+          (pattern) => errorMessage.includes(pattern) || errorStatus === pattern
+        )
+      ) {
+        errorType = "límite de tasa (429)";
+        waitTime = Math.min(
+          retryCount *
+            CONFIG.TIMEOUTS.RATE_LIMIT_DELAY *
+            CONFIG.RETRY.BACKOFF_MULTIPLIER,
+          15000 // Máximo 15 segundos
         );
+      } else {
+        errorType = "no recuperable";
+        shouldRetry = false;
+      }
+
+      console.warn(
+        `⚠️ Error de ${errorType} en batch ${batchNumber}, intento ${retryCount}/${maxRetries}: ${errorMessage} (Status: ${errorStatus})`
+      );
+
+      if (shouldRetry && retryCount < maxRetries) {
+        console.log(
+          `⏳ Esperando ${Math.round(
+            waitTime
+          )}ms antes de reintentar batch ${batchNumber}...`
+        );
+        await new Promise((resolve) => setTimeout(resolve, waitTime));
+      } else {
+        if (shouldRetry) {
+          console.error(
+            `❌ Error persistente de ${errorType} en batch ${batchNumber} después de ${maxRetries} intentos`
+          );
+        } else {
+          console.error(`❌ Error ${errorType} en batch ${batchNumber}`);
+        }
         failedCount += batch.length;
-        errors.push(`Error en batch ${batchNumber}: ${errorMessage}`);
+        errors.push(
+          `Error en batch ${batchNumber}: ${errorMessage} (${errorType})`
+        );
         break;
       }
     }
+  }
+
+  // 📝 AGREGAR BATCH FALLIDO AL TRACKING SI NO TUVO ÉXITO
+  if (!batchSuccess) {
+    const sucursalKey = `sucursal_${sucursalId}`;
+    addFailedBatch(sucursalKey, batch, errors.join(", "), sucursalId, "create");
+  }
+
+  return { uploadedCount, failedCount, errors };
+}
+
+// Nueva función para procesar batches de actualización en paralelo
+async function processUpdateBatchesInParallel(
+  batches: WooCommerceProductFromSucursal[][],
+  wooInstance: WooCommerceRestApi,
+  sucursalId: number,
+  concurrencyLimit: number = CONFIG.CONCURRENCY.BATCHES_PARALELOS_POR_SUCURSAL
+): Promise<{
+  uploadedCount: number;
+  failedCount: number;
+  errors: string[];
+}> {
+  let totalUploaded = 0;
+  let totalFailed = 0;
+  const allErrors: string[] = [];
+
+  // Procesar batches en chunks para limitar concurrencia
+  const batchChunks = [];
+  for (let i = 0; i < batches.length; i += concurrencyLimit) {
+    batchChunks.push(batches.slice(i, i + concurrencyLimit));
+  }
+
+  console.log(
+    `🚀 Procesando ${batches.length} batches de actualización en chunks de ${concurrencyLimit} en paralelo`
+  );
+
+  for (let chunkIndex = 0; chunkIndex < batchChunks.length; chunkIndex++) {
+    const chunk = batchChunks[chunkIndex];
+
+    if (!chunk || chunk.length === 0) continue;
+
+    console.log(
+      `📦 Procesando chunk de actualización ${chunkIndex + 1}/${
+        batchChunks.length
+      } con ${chunk.length} batches paralelos`
+    );
+
+    try {
+      // Procesar batches del chunk en paralelo
+      const chunkResults = await Promise.allSettled(
+        chunk.map(async (batch, batchIndexInChunk) => {
+          const globalBatchIndex =
+            chunkIndex * concurrencyLimit + batchIndexInChunk;
+          return await processSingleUpdateBatch(
+            batch,
+            wooInstance,
+            sucursalId,
+            globalBatchIndex + 1,
+            batches.length
+          );
+        })
+      );
+
+      // Procesar resultados del chunk
+      chunkResults.forEach((result, batchIndexInChunk) => {
+        const globalBatchIndex =
+          chunkIndex * concurrencyLimit + batchIndexInChunk;
+
+        if (result.status === "fulfilled") {
+          const { uploadedCount, failedCount, errors } = result.value;
+          totalUploaded += uploadedCount;
+          totalFailed += failedCount;
+          allErrors.push(...errors);
+
+          console.log(
+            `✅ Batch actualización ${
+              globalBatchIndex + 1
+            }: ${uploadedCount} exitosos, ${failedCount} fallidos`
+          );
+        } else {
+          console.error(
+            `❌ Error en batch actualización ${globalBatchIndex + 1}:`,
+            result.reason
+          );
+          const batch = chunk[batchIndexInChunk];
+          if (batch) {
+            totalFailed += batch.length;
+          }
+          allErrors.push(
+            `Error en batch actualización ${globalBatchIndex + 1}: ${
+              result.reason
+            }`
+          );
+        }
+      });
+
+      // Delay adaptativo entre chunks
+      if (chunkIndex < batchChunks.length - 1) {
+        const avgResponseTime =
+          performanceMetrics.get(sucursalId)?.avgResponseTime || 1000;
+        const chunkDelay = Math.min(
+          Math.max(
+            avgResponseTime * CONFIG.ADAPTIVE_DELAYS.CHUNK_DELAY_MULTIPLIER,
+            CONFIG.ADAPTIVE_DELAYS.CHUNK_MIN_DELAY
+          ),
+          CONFIG.ADAPTIVE_DELAYS.CHUNK_MAX_DELAY
+        );
+        console.log(`⏳ Delay entre chunks de actualización: ${chunkDelay}ms`);
+        await new Promise((resolve) => setTimeout(resolve, chunkDelay));
+      }
+    } catch (error) {
+      console.error(
+        `❌ Error procesando chunk de actualización ${chunkIndex + 1}:`,
+        error
+      );
+      // Contar todos los productos del chunk como fallidos
+      const chunkSize = chunk.reduce((total, batch) => total + batch.length, 0);
+      totalFailed += chunkSize;
+      allErrors.push(
+        `Error en chunk actualización ${chunkIndex + 1}: ${
+          error instanceof Error ? error.message : "Error desconocido"
+        }`
+      );
+    }
+  }
+
+  return {
+    uploadedCount: totalUploaded,
+    failedCount: totalFailed,
+    errors: allErrors,
+  };
+}
+
+// Función para procesar un solo batch de actualización
+async function processSingleUpdateBatch(
+  batch: WooCommerceProductFromSucursal[],
+  wooInstance: WooCommerceRestApi,
+  sucursalId: number,
+  batchNumber: number,
+  totalBatches: number
+): Promise<{
+  uploadedCount: number;
+  failedCount: number;
+  errors: string[];
+}> {
+  let uploadedCount = 0;
+  let failedCount = 0;
+  const errors: string[] = [];
+
+  const batchStartTime = Date.now();
+
+  console.log(
+    `🔄 Procesando batch actualización ${batchNumber}/${totalBatches} (${batch.length} productos)`
+  );
+
+  // REINTENTOS para manejar errores de conexión y sobrecarga del servidor
+  let retryCount = 0;
+  const maxRetries = CONFIG.RETRY.MAX_RETRIES_SERVER_ERROR;
+  let batchSuccess = false;
+
+  while (retryCount < maxRetries && !batchSuccess) {
+    try {
+      // Buscar IDs en paralelo con límite
+      const searchPromises = batch.map(async (product) => {
+        try {
+          const searchResponse = await wooInstance.get("products", {
+            sku: product.sku,
+            per_page: 1,
+          });
+
+          if (searchResponse.data && searchResponse.data.length > 0) {
+            const existingProduct = searchResponse.data[0];
+            return {
+              id: existingProduct.id,
+              ...product,
+            };
+          }
+          return null;
+        } catch (searchError) {
+          console.error(
+            `❌ Error buscando producto ${product.sku}:`,
+            searchError
+          );
+          return null;
+        }
+      });
+
+      // Ejecutar búsquedas en chunks para no saturar
+      const searchChunks = [];
+      for (
+        let i = 0;
+        i < searchPromises.length;
+        i += CONFIG.CONCURRENCY.BUSQUEDAS_PARALELAS_UPDATES
+      ) {
+        searchChunks.push(
+          searchPromises.slice(
+            i,
+            i + CONFIG.CONCURRENCY.BUSQUEDAS_PARALELAS_UPDATES
+          )
+        );
+      }
+
+      const allResults = [];
+      for (const chunk of searchChunks) {
+        const chunkResults = await Promise.all(chunk);
+        allResults.push(...chunkResults);
+        await new Promise((resolve) =>
+          setTimeout(resolve, CONFIG.TIMEOUTS.UPDATE_SEARCH_CHUNK_DELAY)
+        );
+      }
+
+      // Filtrar productos válidos para actualización
+      const validUpdates = allResults.filter((p) => p !== null);
+
+      if (validUpdates.length > 0) {
+        // Preparar productos para actualización (remover SKU)
+        const updateData = validUpdates.map((product) => {
+          const { sku, ...productWithoutSku } = product!;
+          return productWithoutSku;
+        });
+
+        // Actualizar usando batch API
+        const updateResponse = await wooInstance.post("products/batch", {
+          update: updateData,
+        });
+
+        const responseTime = Date.now() - batchStartTime;
+        console.log(
+          `✅ Batch actualización ${batchNumber}/${totalBatches}: Response en ${responseTime}ms, status: ${updateResponse.status}`
+        );
+
+        // Actualizar métricas para delays adaptativos
+        calculateAdaptiveDelay(sucursalId, responseTime);
+        batchSuccess = true;
+
+        if (updateResponse.data) {
+          const batchResult = updateResponse.data;
+
+          // Procesar productos actualizados
+          if (batchResult.update && batchResult.update.length > 0) {
+            batchResult.update.forEach((product: any, index: number) => {
+              if (
+                product.id !== null &&
+                product.id !== undefined &&
+                product.id > 0
+              ) {
+                uploadedCount++;
+              } else {
+                failedCount++;
+                const originalProduct = validUpdates[index];
+                if (originalProduct) {
+                  errors.push(
+                    `SKU ${originalProduct.sku}: Error en actualización`
+                  );
+                }
+              }
+            });
+          }
+
+          // Procesar errores
+          if (batchResult.error && batchResult.error.length > 0) {
+            batchResult.error.forEach((error: any, index: number) => {
+              const originalProduct =
+                validUpdates[index + (batchResult.update?.length || 0)];
+              if (originalProduct) {
+                failedCount++;
+                errors.push(
+                  `SKU ${originalProduct.sku}: ${
+                    error.message || error.code || "Error desconocido"
+                  }`
+                );
+              }
+            });
+          }
+        }
+
+        // Contar productos que no se encontraron para actualizar
+        const notFoundCount = batch.length - validUpdates.length;
+        if (notFoundCount > 0) {
+          failedCount += notFoundCount;
+          errors.push(
+            `${notFoundCount} productos no encontrados para actualizar`
+          );
+        }
+      } else {
+        // No se encontró ningún producto para actualizar
+        failedCount += batch.length;
+        errors.push(
+          `Ningún producto encontrado para actualizar en batch ${batchNumber}`
+        );
+        batchSuccess = true; // No reintentar si no se encuentran productos
+      }
+
+      return { uploadedCount, failedCount, errors };
+    } catch (error: any) {
+      retryCount++;
+      const errorMessage = error?.message || "Error desconocido";
+      const errorStatus = error?.response?.status?.toString() || "";
+
+      // 🔄 CLASIFICAR TIPO DE ERROR PARA APLICAR ESTRATEGIA APROPIADA
+      let waitTime = CONFIG.TIMEOUTS.RETRY_BASE_DELAY;
+      let shouldRetry = true;
+      let errorType = "desconocido";
+
+      if (
+        CONFIG.ERROR_PATTERNS.CONNECTION_ERRORS.some((pattern) =>
+          errorMessage.includes(pattern)
+        )
+      ) {
+        errorType = "conexión";
+        waitTime = retryCount * CONFIG.TIMEOUTS.RETRY_BASE_DELAY;
+      } else if (
+        CONFIG.ERROR_PATTERNS.SERVER_OVERLOAD_ERRORS.some(
+          (pattern) => errorMessage.includes(pattern) || errorStatus === pattern
+        )
+      ) {
+        errorType = "sobrecarga del servidor (503/502/504)";
+        waitTime = Math.min(
+          retryCount *
+            CONFIG.TIMEOUTS.SERVER_OVERLOAD_DELAY *
+            CONFIG.RETRY.BACKOFF_MULTIPLIER,
+          30000 // Máximo 30 segundos
+        );
+
+        // 🚨 Para errores 503, aumentar dramáticamente el delay adaptativo
+        if (errorStatus === "503") {
+          const currentMetrics = performanceMetrics.get(sucursalId);
+          if (currentMetrics) {
+            currentMetrics.avgResponseTime *=
+              CONFIG.ADAPTIVE_DELAYS.OVERLOAD_MULTIPLIER;
+            console.log(
+              `⚠️ Error 503 detectado en actualización: aumentando delays adaptativos x${CONFIG.ADAPTIVE_DELAYS.OVERLOAD_MULTIPLIER}`
+            );
+          }
+        }
+      } else if (
+        CONFIG.ERROR_PATTERNS.RATE_LIMIT_ERRORS.some(
+          (pattern) => errorMessage.includes(pattern) || errorStatus === pattern
+        )
+      ) {
+        errorType = "límite de tasa (429)";
+        waitTime = Math.min(
+          retryCount *
+            CONFIG.TIMEOUTS.RATE_LIMIT_DELAY *
+            CONFIG.RETRY.BACKOFF_MULTIPLIER,
+          15000 // Máximo 15 segundos
+        );
+      } else {
+        errorType = "no recuperable";
+        shouldRetry = false;
+      }
+
+      console.warn(
+        `⚠️ Error de ${errorType} en batch actualización ${batchNumber}, intento ${retryCount}/${maxRetries}: ${errorMessage} (Status: ${errorStatus})`
+      );
+
+      if (shouldRetry && retryCount < maxRetries) {
+        console.log(
+          `⏳ Esperando ${Math.round(
+            waitTime
+          )}ms antes de reintentar batch actualización ${batchNumber}...`
+        );
+        await new Promise((resolve) => setTimeout(resolve, waitTime));
+      } else {
+        if (shouldRetry) {
+          console.error(
+            `❌ Error persistente de ${errorType} en batch actualización ${batchNumber} después de ${maxRetries} intentos`
+          );
+        } else {
+          console.error(
+            `❌ Error ${errorType} en batch actualización ${batchNumber}`
+          );
+        }
+        failedCount += batch.length;
+        errors.push(
+          `Error en batch actualización ${batchNumber}: ${errorMessage} (${errorType})`
+        );
+        break;
+      }
+    }
+  }
+
+  // 📝 AGREGAR BATCH FALLIDO AL TRACKING SI NO TUVO ÉXITO
+  if (!batchSuccess) {
+    const sucursalKey = `sucursal_${sucursalId}`;
+    addFailedBatch(sucursalKey, batch, errors.join(", "), sucursalId, "update");
   }
 
   return { uploadedCount, failedCount, errors };
@@ -626,6 +1137,11 @@ async function uploadProductsFromMultipleSucursales(
     errors: string[];
   }>;
   duration: number;
+  recoveryResults?: {
+    recoveredCount: number;
+    permanentlyFailedCount: number;
+    errors: string[];
+  };
 }> {
   const startTime = Date.now();
   let totalUploaded = 0;
@@ -729,6 +1245,24 @@ async function uploadProductsFromMultipleSucursales(
     }
   }
 
+  // 🔄 PROCESAR BATCHES FALLIDOS AL FINAL
+  console.log(`🔄 Iniciando fase de recovery de batches fallidos...`);
+  const recoveryResults = await processFailedBatches();
+
+  if (recoveryResults.recoveredCount > 0) {
+    console.log(
+      `✅ Recovery exitoso: ${recoveryResults.recoveredCount} productos recuperados`
+    );
+    totalUploaded += recoveryResults.recoveredCount;
+  }
+
+  if (recoveryResults.permanentlyFailedCount > 0) {
+    console.log(
+      `❌ ${recoveryResults.permanentlyFailedCount} productos fallaron permanentemente`
+    );
+    totalFailed += recoveryResults.permanentlyFailedCount;
+  }
+
   const duration = Date.now() - startTime;
 
   return {
@@ -737,6 +1271,7 @@ async function uploadProductsFromMultipleSucursales(
     totalFailed,
     sucursalResults,
     duration,
+    recoveryResults, // Incluir resultados de recovery en la respuesta
   };
 }
 
@@ -850,7 +1385,7 @@ async function uploadProductsFromSucursalJson(jsonFilePath: string): Promise<{
       );
     }
 
-    // FASE 2: Actualizar productos duplicados (mantener secuencial por simplicidad)
+    // FASE 2: Actualizar productos duplicados con batches paralelos
     if (duplicateProducts.length > 0) {
       console.log(
         `🔄 Iniciando actualización de ${duplicateProducts.length} productos existentes...`
@@ -874,143 +1409,31 @@ async function uploadProductsFromSucursalJson(jsonFilePath: string): Promise<{
         }
       });
 
-      const updateBatchSize = CONFIG.BATCH_SIZES.ACTUALIZACION; // Menor tamaño para actualizaciones
-      const updateBatches = Math.ceil(
-        duplicateProducts.length / updateBatchSize
-      );
-
-      for (
-        let updateBatchIndex = 0;
-        updateBatchIndex < updateBatches;
-        updateBatchIndex++
-      ) {
-        const start = updateBatchIndex * updateBatchSize;
-        const end = start + updateBatchSize;
-        const updateBatch = duplicateProducts.slice(start, end);
-
-        console.log(
-          `🔄 Procesando batch de actualización ${
-            updateBatchIndex + 1
-          }/${updateBatches} (${updateBatch.length} productos)`
-        );
-
-        try {
-          // Buscar IDs en paralelo con límite
-          const searchPromises = updateBatch.map(async (product) => {
-            try {
-              const searchResponse = await wooInstance.get("products", {
-                sku: product.sku,
-                per_page: 1,
-              });
-
-              if (searchResponse.data && searchResponse.data.length > 0) {
-                const existingProduct = searchResponse.data[0];
-                return {
-                  id: existingProduct.id,
-                  ...product,
-                };
-              }
-              return null;
-            } catch (searchError) {
-              console.error(
-                `❌ Error buscando producto ${product.sku}:`,
-                searchError
-              );
-              return null;
-            }
-          });
-
-          // Ejecutar búsquedas en chunks para no saturar
-          const searchChunks = [];
-          for (
-            let i = 0;
-            i < searchPromises.length;
-            i += CONFIG.CONCURRENCY.BUSQUEDAS_PARALELAS_UPDATES
-          ) {
-            searchChunks.push(
-              searchPromises.slice(
-                i,
-                i + CONFIG.CONCURRENCY.BUSQUEDAS_PARALELAS_UPDATES
-              )
-            );
-          }
-
-          const allResults = [];
-          for (const chunk of searchChunks) {
-            const chunkResults = await Promise.all(chunk);
-            allResults.push(...chunkResults);
-            await new Promise((resolve) =>
-              setTimeout(resolve, CONFIG.TIMEOUTS.UPDATE_SEARCH_CHUNK_DELAY)
-            ); // Pequeño delay entre chunks de búsqueda
-          }
-
-          // Filtrar productos válidos para actualización
-          const validUpdates = allResults.filter((p) => p !== null);
-
-          if (validUpdates.length > 0) {
-            // Preparar productos para actualización (remover SKU)
-            const updateData = validUpdates.map((product) => {
-              const { sku, ...productWithoutSku } = product!;
-              return productWithoutSku;
-            });
-
-            // Actualizar usando batch API
-            const updateResponse = await wooInstance.post("products/batch", {
-              update: updateData,
-            });
-
-            if (updateResponse.data && updateResponse.data.update) {
-              const updated = updateResponse.data.update.length;
-              uploadedCount += updated;
-              console.log(
-                `✅ ${updated} productos actualizados exitosamente en batch ${
-                  updateBatchIndex + 1
-                }`
-              );
-            }
-
-            if (updateResponse.data && updateResponse.data.error) {
-              const updateErrors = updateResponse.data.error.length;
-              failedCount += updateErrors;
-              console.log(
-                `❌ ${updateErrors} productos fallaron en actualización`
-              );
-
-              updateResponse.data.error.forEach((error: any, index: number) => {
-                const originalProduct = validUpdates[index];
-                if (originalProduct) {
-                  errors.push(
-                    `Update SKU ${originalProduct.sku}: ${
-                      error.message || "Error en actualización"
-                    }`
-                  );
-                }
-              });
-            }
-          }
-        } catch (updateError) {
-          console.error(
-            `❌ Error en batch de actualización ${updateBatchIndex + 1}:`,
-            updateError
-          );
-          failedCount += updateBatch.length;
-          errors.push(
-            `Error en actualización batch ${updateBatchIndex + 1}: ${
-              updateError instanceof Error
-                ? updateError.message
-                : "Error desconocido"
-            }`
-          );
-        }
-
-        // Delay adaptativo entre batches de actualización
-        const delay =
-          calculateAdaptiveDelay(sucursal_id, 1000) /
-          CONFIG.ADAPTIVE_DELAYS.UPDATE_DELAY_DIVISOR; // Delay menor para actualizaciones
-        await new Promise((resolve) => setTimeout(resolve, delay));
+      // Dividir productos duplicados en batches
+      const updateBatchSize = CONFIG.BATCH_SIZES.ACTUALIZACION;
+      const updateBatches = [];
+      for (let i = 0; i < duplicateProducts.length; i += updateBatchSize) {
+        updateBatches.push(duplicateProducts.slice(i, i + updateBatchSize));
       }
 
-      console.log(`📊 Fase 2 completada: duplicados procesados y actualizados`);
+      console.log(
+        `📦 Iniciando actualización de ${duplicateProducts.length} productos en ${updateBatches.length} batches (${batchConcurrency} en paralelo)...`
+      );
+
+      const updateResult = await processUpdateBatchesInParallel(
+        updateBatches,
+        wooInstance,
+        sucursal_id,
+        batchConcurrency
+      );
+
+      uploadedCount += updateResult.uploadedCount;
+      failedCount += updateResult.failedCount;
+      errors.push(...updateResult.errors);
+
+      console.log(
+        `✅ Fase 2 completada: ${updateResult.uploadedCount} actualizados, ${updateResult.failedCount} fallidos`
+      );
     }
 
     const duration = Date.now() - startTime;
@@ -1157,5 +1580,165 @@ async function deleteAllProductsFromSucursal(
     success: errors.length === 0,
     deleted: totalDeleted,
     errors,
+  };
+}
+
+// Función para agregar batch fallido al tracking
+function addFailedBatch(
+  sucursalKey: string,
+  products: WooCommerceProductFromSucursal[],
+  reason: string,
+  sucursalId: number,
+  batchType: "create" | "update" = "create"
+) {
+  if (!failedBatches.has(sucursalKey)) {
+    failedBatches.set(sucursalKey, []);
+  }
+
+  const failedBatchInfo: FailedBatchInfo = {
+    products,
+    reason,
+    retryCount: 0,
+    sucursalId,
+    batchType,
+  };
+
+  failedBatches.get(sucursalKey)!.push(failedBatchInfo);
+  console.log(
+    `📝 Batch fallido agregado al tracking: ${products.length} productos (${reason})`
+  );
+}
+
+// Función para procesar batches fallidos al final
+async function processFailedBatches(): Promise<{
+  recoveredCount: number;
+  permanentlyFailedCount: number;
+  errors: string[];
+}> {
+  let totalRecovered = 0;
+  let totalPermanentlyFailed = 0;
+  const allErrors: string[] = [];
+
+  if (failedBatches.size === 0) {
+    console.log(`✅ No hay batches fallidos para reprocesar`);
+    return { recoveredCount: 0, permanentlyFailedCount: 0, errors: [] };
+  }
+
+  console.log(
+    `🔄 Iniciando reprocesamiento de ${failedBatches.size} sucursales con batches fallidos...`
+  );
+
+  for (const [sucursalKey, batches] of failedBatches.entries()) {
+    console.log(
+      `🔄 Reprocesando ${batches.length} batches fallidos para ${sucursalKey}...`
+    );
+
+    for (const batch of batches) {
+      if (batch.retryCount >= 2) {
+        // Máximo 2 reintentos en la fase de recovery
+        console.log(
+          `❌ Batch excedió reintentos máximos, marcando como permanentemente fallido`
+        );
+        totalPermanentlyFailed += batch.products.length;
+        allErrors.push(
+          `Batch de ${batch.products.length} productos falló permanentemente: ${batch.reason}`
+        );
+        continue;
+      }
+
+      try {
+        const wooInstance = getWooCommerceInstance(batch.sucursalId);
+        if (!wooInstance) {
+          throw new Error(
+            `No se pudo obtener instancia de WooCommerce para sucursal ${batch.sucursalId}`
+          );
+        }
+
+        // Dividir en batches más pequeños para recovery
+        const smallBatches = [];
+        for (
+          let i = 0;
+          i < batch.products.length;
+          i += CONFIG.BATCH_SIZES.RETRY_BATCH
+        ) {
+          smallBatches.push(
+            batch.products.slice(i, i + CONFIG.BATCH_SIZES.RETRY_BATCH)
+          );
+        }
+
+        let batchRecovered = 0;
+        for (const smallBatch of smallBatches) {
+          try {
+            console.log(
+              `🔄 Reintentando batch pequeño de ${smallBatch.length} productos...`
+            );
+
+            const response = await wooInstance.post("products/batch", {
+              [batch.batchType]:
+                batch.batchType === "create"
+                  ? smallBatch
+                  : smallBatch.map((p) => {
+                      const { sku, ...productWithoutSku } = p;
+                      return productWithoutSku;
+                    }),
+            });
+
+            if (response.data && response.data[batch.batchType]) {
+              const successCount = response.data[batch.batchType].length;
+              batchRecovered += successCount;
+              console.log(
+                `✅ Recovery exitoso: ${successCount}/${smallBatch.length} productos`
+              );
+            }
+
+            // Delay entre small batches en recovery
+            await new Promise((resolve) =>
+              setTimeout(resolve, CONFIG.TIMEOUTS.SERVER_OVERLOAD_DELAY / 2)
+            );
+          } catch (smallBatchError) {
+            console.warn(`⚠️ Small batch en recovery falló:`, smallBatchError);
+            allErrors.push(
+              `Small batch recovery falló: ${
+                smallBatchError instanceof Error
+                  ? smallBatchError.message
+                  : "Error desconocido"
+              }`
+            );
+          }
+        }
+
+        totalRecovered += batchRecovered;
+        batch.retryCount++;
+
+        console.log(
+          `📊 Recovery completado para batch: ${batchRecovered}/${batch.products.length} productos recuperados`
+        );
+      } catch (error) {
+        batch.retryCount++;
+        const errorMsg =
+          error instanceof Error ? error.message : "Error desconocido";
+        console.error(`❌ Error en recovery de batch:`, errorMsg);
+        allErrors.push(`Error en recovery: ${errorMsg}`);
+
+        if (batch.retryCount >= 2) {
+          totalPermanentlyFailed += batch.products.length;
+        }
+      }
+    }
+
+    // Delay entre sucursales en recovery
+    await new Promise((resolve) =>
+      setTimeout(resolve, CONFIG.TIMEOUTS.CHUNKS_DELAY_SUCURSALES)
+    );
+  }
+
+  console.log(
+    `📊 Recovery completado: ${totalRecovered} recuperados, ${totalPermanentlyFailed} fallidos permanentemente`
+  );
+
+  return {
+    recoveredCount: totalRecovered,
+    permanentlyFailedCount: totalPermanentlyFailed,
+    errors: allErrors,
   };
 }
