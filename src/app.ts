@@ -94,7 +94,7 @@ process.on("SIGINT", () => {
 // Iniciar servidor
 const startServer = async () => {
   try {
-    app.listen(config.server.port, () => {
+    app.listen(config.server.port, async () => {
       logger.info(`🚀 Servidor iniciado en puerto ${config.server.port}`);
       logger.info(`📍 Ambiente: ${config.server.nodeEnv}`);
       logger.info(`🕐 Zona horaria: ${config.timezone}`);
@@ -115,8 +115,8 @@ const startServer = async () => {
         // para testear que se inicialice inmediatamente
         // SchedulerService.DEBUG_executeImmediateSync();
         //executeUpload();
-
-        executeUpload();
+        //await executeDelete(10);
+        await executeUpload();
         logger.info("✅ Sistema de cron jobs inicializado y activado");
       } catch (error) {
         logger.error("❌ Error al inicializar sistema de cron jobs:", error);

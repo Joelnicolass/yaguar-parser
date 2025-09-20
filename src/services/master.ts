@@ -10,95 +10,141 @@ import {
 } from "../config/categorias_referencia";
 import { SucursalData, SucursalProduct } from "../types";
 
-// ✅ CONFIGURACIÓN CENTRALIZADA - Modificar aquí para cambiar comportamiento
+// ✅ CONFIGURACIÓN CENTRALIZADA - Leer desde variables de entorno
 const CONFIG = {
   // Configuración de concurrencia y paralelismo
   CONCURRENCY: {
-    SUCURSALES_PARALELAS: 10, // Máximo sucursales procesadas en paralelo
-    BATCHES_PARALELOS_POR_SUCURSAL: 6, // Máximo batches paralelos por sucursal
-    IMAGENES_PARALELAS: 1000, // Máximo verificaciones de imágenes en paralelo
-    BUSQUEDAS_PARALELAS_UPDATES: 5, // Máximo búsquedas paralelas para updates
+    SUCURSALES_PARALELAS: parseInt(
+      process.env.CONFIG_SUCURSALES_PARALELAS || "10"
+    ),
+    BATCHES_PARALELOS_POR_SUCURSAL: parseInt(
+      process.env.CONFIG_BATCHES_PARALELOS_POR_SUCURSAL || "6"
+    ),
+    IMAGENES_PARALELAS: parseInt(
+      process.env.CONFIG_IMAGENES_PARALELAS || "1000"
+    ),
+    BUSQUEDAS_PARALELAS_UPDATES: parseInt(
+      process.env.CONFIG_BUSQUEDAS_PARALELAS_UPDATES || "5"
+    ),
   },
 
   // Configuración de tamaños de batch
   BATCH_SIZES: {
-    CREACION: 50, // Productos por batch para creación
-    ACTUALIZACION: 25, // Productos por batch para actualización
-    ELIMINACION: 100, // Productos por batch para eliminación
-    PAGINACION_SKUS: 100, // Productos por página al obtener SKUs existentes
-    RETRY_BATCH: 20, // Tamaño más pequeño para reintentos
+    CREACION: parseInt(process.env.CONFIG_BATCH_SIZE_CREACION || "50"),
+    ACTUALIZACION: parseInt(
+      process.env.CONFIG_BATCH_SIZE_ACTUALIZACION || "25"
+    ),
+    ELIMINACION: parseInt(process.env.CONFIG_BATCH_SIZE_ELIMINACION || "100"),
+    PAGINACION_SKUS: parseInt(
+      process.env.CONFIG_BATCH_SIZE_PAGINACION_SKUS || "100"
+    ),
+    RETRY_BATCH: parseInt(process.env.CONFIG_BATCH_SIZE_RETRY || "20"),
   },
 
   // Configuración de timeouts y delays
   TIMEOUTS: {
-    WOOCOMMERCE_TIMEOUT: 300000, // 5 minutos para operaciones WooCommerce
-    IMAGE_VERIFICATION_TIMEOUT: 5000, // 5 segundos para verificar imágenes
-    RETRY_BASE_DELAY: 2000, // Delay base para reintentos (ms)
-    CHUNKS_DELAY_SUCURSALES: 2000, // Delay entre chunks de sucursales
-    SKU_FETCH_DELAY: 100, // Delay entre páginas al obtener SKUs
-    UPDATE_SEARCH_CHUNK_DELAY: 100, // Delay entre chunks de búsqueda
-    DELETE_BATCH_DELAY: 300, // Delay entre batches de eliminación
-    SERVER_OVERLOAD_DELAY: 10000, // Delay para errores 503/502 (10 segundos)
-    RATE_LIMIT_DELAY: 5000, // Delay para errores 429 (5 segundos)
+    WOOCOMMERCE_TIMEOUT: parseInt(
+      process.env.CONFIG_WOOCOMMERCE_TIMEOUT || "300000"
+    ),
+    IMAGE_VERIFICATION_TIMEOUT: parseInt(
+      process.env.CONFIG_IMAGE_VERIFICATION_TIMEOUT || "5000"
+    ),
+    RETRY_BASE_DELAY: parseInt(process.env.CONFIG_RETRY_BASE_DELAY || "2000"),
+    CHUNKS_DELAY_SUCURSALES: parseInt(
+      process.env.CONFIG_CHUNKS_DELAY_SUCURSALES || "2000"
+    ),
+    SKU_FETCH_DELAY: parseInt(process.env.CONFIG_SKU_FETCH_DELAY || "100"),
+    UPDATE_SEARCH_CHUNK_DELAY: parseInt(
+      process.env.CONFIG_UPDATE_SEARCH_CHUNK_DELAY || "100"
+    ),
+    DELETE_BATCH_DELAY: parseInt(
+      process.env.CONFIG_DELETE_BATCH_DELAY || "300"
+    ),
+    SERVER_OVERLOAD_DELAY: parseInt(
+      process.env.CONFIG_SERVER_OVERLOAD_DELAY || "10000"
+    ),
+    RATE_LIMIT_DELAY: parseInt(process.env.CONFIG_RATE_LIMIT_DELAY || "5000"),
   },
 
   // Configuración de reintentos y límites
   RETRY: {
-    MAX_RETRIES: 3, // Máximo reintentos por batch
-    MAX_RESPONSE_TIMES_TRACKED: 5, // Cantidad de tiempos de respuesta a trackear
-    MAX_RETRIES_SERVER_ERROR: 5, // Máximo reintentos para errores 5xx
-    BACKOFF_MULTIPLIER: 1.5, // Multiplicador para backoff exponencial
+    MAX_RETRIES: parseInt(process.env.CONFIG_MAX_RETRIES || "3"),
+    MAX_RESPONSE_TIMES_TRACKED: parseInt(
+      process.env.CONFIG_MAX_RESPONSE_TIMES_TRACKED || "5"
+    ),
+    MAX_RETRIES_SERVER_ERROR: parseInt(
+      process.env.CONFIG_MAX_RETRIES_SERVER_ERROR || "5"
+    ),
+    BACKOFF_MULTIPLIER: parseFloat(
+      process.env.CONFIG_BACKOFF_MULTIPLIER || "1.5"
+    ),
     // Configuración para axios-retry
-    AXIOS_RETRY_ATTEMPTS: 4, // Intentos de axios-retry
-    AXIOS_RETRY_DELAY: 2000, // Delay base para axios-retry
+    AXIOS_RETRY_ATTEMPTS: parseInt(
+      process.env.CONFIG_AXIOS_RETRY_ATTEMPTS || "4"
+    ),
+    AXIOS_RETRY_DELAY: parseInt(process.env.CONFIG_AXIOS_RETRY_DELAY || "2000"),
   },
 
   // Configuración de delays adaptativos
   ADAPTIVE_DELAYS: {
-    MIN_DELAY: 500, // Delay mínimo adaptativo (ms)
-    MAX_DELAY: 3000, // Delay máximo adaptativo (ms)
-    RESPONSE_TIME_MULTIPLIER: 0.3, // Multiplicador del tiempo de respuesta
-    CHUNK_DELAY_MULTIPLIER: 0.2, // Multiplicador para delay entre chunks
-    CHUNK_MIN_DELAY: 300, // Delay mínimo entre chunks (ms)
-    CHUNK_MAX_DELAY: 1500, // Delay máximo entre chunks (ms)
-    UPDATE_DELAY_DIVISOR: 2, // Divisor para delays de actualización
-    OVERLOAD_MULTIPLIER: 2, // Multiplicador cuando hay sobrecarga del servidor
+    MIN_DELAY: parseInt(process.env.CONFIG_MIN_DELAY || "500"),
+    MAX_DELAY: parseInt(process.env.CONFIG_MAX_DELAY || "3000"),
+    RESPONSE_TIME_MULTIPLIER: parseFloat(
+      process.env.CONFIG_RESPONSE_TIME_MULTIPLIER || "0.3"
+    ),
+    CHUNK_DELAY_MULTIPLIER: parseFloat(
+      process.env.CONFIG_CHUNK_DELAY_MULTIPLIER || "0.2"
+    ),
+    CHUNK_MIN_DELAY: parseInt(process.env.CONFIG_CHUNK_MIN_DELAY || "300"),
+    CHUNK_MAX_DELAY: parseInt(process.env.CONFIG_CHUNK_MAX_DELAY || "1500"),
+    UPDATE_DELAY_DIVISOR: parseInt(
+      process.env.CONFIG_UPDATE_DELAY_DIVISOR || "2"
+    ),
+    OVERLOAD_MULTIPLIER: parseInt(
+      process.env.CONFIG_OVERLOAD_MULTIPLIER || "2"
+    ),
   },
 
   // URLs y rutas
   URLS: {
-    FALLBACK_IMAGE: "https://vd.com.ar/images/0000.png", // Imagen por defecto
-    IMAGE_BASE_URL: "https://vd.com.ar/images/", // Base URL para imágenes
+    FALLBACK_IMAGE:
+      process.env.CONFIG_FALLBACK_IMAGE || "https://vd.com.ar/images/0000.png",
+    IMAGE_BASE_URL:
+      process.env.CONFIG_IMAGE_BASE_URL || "https://vd.com.ar/images/",
   },
 
   // Configuración de archivos y extensiones
   FILES: {
-    JSON_EXTENSION: ".json", // Extensión de archivos a procesar
+    JSON_EXTENSION: process.env.CONFIG_JSON_EXTENSION || ".json",
   },
 
   // Configuración de campos WooCommerce
   WOOCOMMERCE: {
-    VERSION: "wc/v3", // Versión de la API de WooCommerce
-    PRODUCT_TYPE: "simple", // Tipo de producto por defecto
-    PRODUCT_STATUS: "publish", // Estado de producto por defecto
-    STOCK_STATUS: "instock", // Estado de stock por defecto
-    SKU_FIELD_ONLY: "sku", // Campo para obtener solo SKUs
-    HTTP_METHOD_HEAD: "HEAD", // Método HTTP para verificar imágenes
-    DELETE_PAGE: 1, // Página fija para eliminación (se actualiza dinámicamente)
+    VERSION: process.env.CONFIG_WOOCOMMERCE_VERSION || "wc/v3",
+    PRODUCT_TYPE: process.env.CONFIG_PRODUCT_TYPE || "simple",
+    PRODUCT_STATUS: process.env.CONFIG_PRODUCT_STATUS || "publish",
+    STOCK_STATUS: process.env.CONFIG_STOCK_STATUS || "instock",
+    SKU_FIELD_ONLY: process.env.CONFIG_SKU_FIELD_ONLY || "sku",
+    HTTP_METHOD_HEAD: process.env.CONFIG_HTTP_METHOD_HEAD || "HEAD",
+    DELETE_PAGE: parseInt(process.env.CONFIG_DELETE_PAGE || "1"),
   },
 
   // Mensajes de error comunes
   ERROR_PATTERNS: {
-    CONNECTION_ERRORS: ["socket hang up", "ECONNRESET", "timeout"],
-    SERVER_OVERLOAD_ERRORS: [
-      "503", // Service Unavailable
-      "502", // Bad Gateway
-      "504", // Gateway Timeout
-      "500", // Internal Server Error
-    ],
-    RATE_LIMIT_ERRORS: ["429"], // Too Many Requests
+    CONNECTION_ERRORS: (
+      process.env.CONFIG_CONNECTION_ERRORS ||
+      "socket hang up,ECONNRESET,timeout"
+    ).split(","),
+    SERVER_OVERLOAD_ERRORS: (
+      process.env.CONFIG_SERVER_OVERLOAD_ERRORS || "503,502,504,500"
+    ).split(","),
+    RATE_LIMIT_ERRORS: (process.env.CONFIG_RATE_LIMIT_ERRORS || "429").split(
+      ","
+    ),
   },
 };
+
+console.log("⚙️ Configuración cargada:", JSON.stringify(CONFIG, null, 2));
 
 // Cache global para verificación de imágenes
 const imageCache = new Map<string, boolean>();
