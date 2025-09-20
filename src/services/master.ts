@@ -9,6 +9,80 @@ import {
 } from "../config/categorias_referencia";
 import { SucursalData, SucursalProduct } from "../types";
 
+// ✅ CONFIGURACIÓN CENTRALIZADA - Modificar aquí para cambiar comportamiento
+const CONFIG = {
+  // Configuración de concurrencia y paralelismo
+  CONCURRENCY: {
+    SUCURSALES_PARALELAS: 1, // Máximo sucursales procesadas en paralelo
+    BATCHES_PARALELOS_POR_SUCURSAL: 3, // Máximo batches paralelos por sucursal
+    IMAGENES_PARALELAS: 500, // Máximo verificaciones de imágenes en paralelo
+    BUSQUEDAS_PARALELAS_UPDATES: 5, // Máximo búsquedas paralelas para updates
+  },
+
+  // Configuración de tamaños de batch
+  BATCH_SIZES: {
+    CREACION: 50, // Productos por batch para creación
+    ACTUALIZACION: 50, // Productos por batch para actualización
+    ELIMINACION: 100, // Productos por batch para eliminación
+    PAGINACION_SKUS: 100, // Productos por página al obtener SKUs existentes
+  },
+
+  // Configuración de timeouts y delays
+  TIMEOUTS: {
+    WOOCOMMERCE_TIMEOUT: 300000, // 5 minutos para operaciones WooCommerce
+    IMAGE_VERIFICATION_TIMEOUT: 5000, // 5 segundos para verificar imágenes
+    RETRY_BASE_DELAY: 2000, // Delay base para reintentos (ms)
+    CHUNKS_DELAY_SUCURSALES: 2000, // Delay entre chunks de sucursales
+    SKU_FETCH_DELAY: 100, // Delay entre páginas al obtener SKUs
+    UPDATE_SEARCH_CHUNK_DELAY: 100, // Delay entre chunks de búsqueda
+    DELETE_BATCH_DELAY: 300, // Delay entre batches de eliminación
+  },
+
+  // Configuración de reintentos y límites
+  RETRY: {
+    MAX_RETRIES: 3, // Máximo reintentos por batch
+    MAX_RESPONSE_TIMES_TRACKED: 5, // Cantidad de tiempos de respuesta a trackear
+  },
+
+  // Configuración de delays adaptativos
+  ADAPTIVE_DELAYS: {
+    MIN_DELAY: 500, // Delay mínimo adaptativo (ms)
+    MAX_DELAY: 3000, // Delay máximo adaptativo (ms)
+    RESPONSE_TIME_MULTIPLIER: 0.3, // Multiplicador del tiempo de respuesta
+    CHUNK_DELAY_MULTIPLIER: 0.2, // Multiplicador para delay entre chunks
+    CHUNK_MIN_DELAY: 300, // Delay mínimo entre chunks (ms)
+    CHUNK_MAX_DELAY: 1500, // Delay máximo entre chunks (ms)
+    UPDATE_DELAY_DIVISOR: 2, // Divisor para delays de actualización
+  },
+
+  // URLs y rutas
+  URLS: {
+    FALLBACK_IMAGE: "https://vd.com.ar/images/0000.png", // Imagen por defecto
+    IMAGE_BASE_URL: "https://vd.com.ar/images/", // Base URL para imágenes
+  },
+
+  // Configuración de archivos y extensiones
+  FILES: {
+    JSON_EXTENSION: ".json", // Extensión de archivos a procesar
+  },
+
+  // Configuración de campos WooCommerce
+  WOOCOMMERCE: {
+    VERSION: "wc/v3", // Versión de la API de WooCommerce
+    PRODUCT_TYPE: "simple", // Tipo de producto por defecto
+    PRODUCT_STATUS: "publish", // Estado de producto por defecto
+    STOCK_STATUS: "instock", // Estado de stock por defecto
+    SKU_FIELD_ONLY: "sku", // Campo para obtener solo SKUs
+    HTTP_METHOD_HEAD: "HEAD", // Método HTTP para verificar imágenes
+    DELETE_PAGE: 1, // Página fija para eliminación (se actualiza dinámicamente)
+  },
+
+  // Mensajes de error comunes
+  ERROR_PATTERNS: {
+    CONNECTION_ERRORS: ["socket hang up", "ECONNRESET", "timeout"],
+  },
+};
+
 // Cache global para verificación de imágenes
 const imageCache = new Map<string, boolean>();
 
@@ -66,9 +140,11 @@ function initializeSucursalInstance(
     url: credenciales.credenciales.url,
     consumerKey: credenciales.credenciales.consumerKey,
     consumerSecret: credenciales.credenciales.consumerSecret,
-    version: credenciales.credenciales.version || ("wc/v3" as any),
+    version:
+      credenciales.credenciales.version || (CONFIG.WOOCOMMERCE.VERSION as any),
     axiosConfig: {
-      timeout: 240000,
+      timeout: CONFIG.TIMEOUTS.WOOCOMMERCE_TIMEOUT,
+      // Aumentado a 5 minutos para operaciones largas
     },
   });
 
@@ -97,11 +173,13 @@ export async function executeUpload(): Promise<void> {
     if (!res.files || res.files.length === 0)
       throw new Error("No se encontraron archivos en el servidor SFTP");
 
-    const jsonFiles = res.files.filter((file) => file.name.endsWith(".json"));
+    const jsonFiles = res.files.filter((file) =>
+      file.name.endsWith(CONFIG.FILES.JSON_EXTENSION)
+    );
     const downloadedJsonFiles = [];
 
     for (const file of jsonFiles) {
-      if (file.name.endsWith(".json")) {
+      if (file.name.endsWith(CONFIG.FILES.JSON_EXTENSION)) {
         const downloadRes = await SftpService.downloadFile(file.name);
         if (downloadRes.success) {
           downloadedJsonFiles.push(downloadRes.localPath);
@@ -145,10 +223,13 @@ async function verifyImageExists(imageUrl: string): Promise<boolean> {
   try {
     // Crear AbortController para timeout manual
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 5000);
+    const timeoutId = setTimeout(
+      () => controller.abort(),
+      CONFIG.TIMEOUTS.IMAGE_VERIFICATION_TIMEOUT
+    );
 
     const response = await fetch(imageUrl, {
-      method: "HEAD",
+      method: CONFIG.WOOCOMMERCE.HTTP_METHOD_HEAD,
       signal: controller.signal,
     });
 
@@ -165,7 +246,7 @@ async function verifyImageExists(imageUrl: string): Promise<boolean> {
 // Función para verificar múltiples imágenes en paralelo con límite
 async function verifyImagesInBatch(
   imageUrls: string[],
-  concurrencyLimit: number = 10
+  concurrencyLimit: number = CONFIG.CONCURRENCY.IMAGENES_PARALELAS
 ): Promise<Map<string, boolean>> {
   const results = new Map<string, boolean>();
 
@@ -207,7 +288,7 @@ async function getAllExistingSkus(
 ): Promise<Set<string>> {
   const existingSkus = new Set<string>();
   let page = 1;
-  const perPage = 100;
+  const perPage = CONFIG.BATCH_SIZES.PAGINACION_SKUS;
 
   console.log(`🔍 Obteniendo SKUs existentes...`);
 
@@ -216,7 +297,7 @@ async function getAllExistingSkus(
       const response = await wooInstance.get("products", {
         per_page: perPage,
         page,
-        _fields: "sku", // Solo obtener el campo SKU para mayor eficiencia
+        _fields: CONFIG.WOOCOMMERCE.SKU_FIELD_ONLY, // Solo obtener el campo SKU para mayor eficiencia
       });
 
       const products = response.data;
@@ -234,7 +315,9 @@ async function getAllExistingSkus(
       page++;
 
       // Delay pequeño para no saturar
-      await new Promise((resolve) => setTimeout(resolve, 100));
+      await new Promise((resolve) =>
+        setTimeout(resolve, CONFIG.TIMEOUTS.SKU_FETCH_DELAY)
+      );
     }
   } catch (error) {
     console.warn(`⚠️ Error obteniendo SKUs existentes:`, error);
@@ -255,7 +338,7 @@ function calculateAdaptiveDelay(
     metrics = {
       avgResponseTime: responseTime,
       lastResponseTimes: [responseTime],
-      maxResponseTimes: 5,
+      maxResponseTimes: CONFIG.RETRY.MAX_RESPONSE_TIMES_TRACKED,
     };
     performanceMetrics.set(sucursalId, metrics);
   } else {
@@ -274,8 +357,11 @@ function calculateAdaptiveDelay(
   // Delay adaptativo: más tiempo si el servidor está lento
   // Mínimo 500ms, máximo 3000ms
   const adaptiveDelay = Math.min(
-    Math.max(metrics.avgResponseTime * 0.3, 500),
-    3000
+    Math.max(
+      metrics.avgResponseTime * CONFIG.ADAPTIVE_DELAYS.RESPONSE_TIME_MULTIPLIER,
+      CONFIG.ADAPTIVE_DELAYS.MIN_DELAY
+    ),
+    CONFIG.ADAPTIVE_DELAYS.MAX_DELAY
   );
 
   console.log(
@@ -285,6 +371,244 @@ function calculateAdaptiveDelay(
   );
 
   return adaptiveDelay;
+}
+
+// Nueva función para procesar batches en paralelo con límite de concurrencia
+async function processBatchesInParallel(
+  batches: WooCommerceProductFromSucursal[][],
+  wooInstance: WooCommerceRestApi,
+  sucursalId: number,
+  concurrencyLimit: number = CONFIG.CONCURRENCY.BATCHES_PARALELOS_POR_SUCURSAL
+): Promise<{
+  uploadedCount: number;
+  failedCount: number;
+  errors: string[];
+}> {
+  let totalUploaded = 0;
+  let totalFailed = 0;
+  const allErrors: string[] = [];
+
+  // Procesar batches en chunks para limitar concurrencia
+  const batchChunks = [];
+  for (let i = 0; i < batches.length; i += concurrencyLimit) {
+    batchChunks.push(batches.slice(i, i + concurrencyLimit));
+  }
+
+  console.log(
+    `🚀 Procesando ${batches.length} batches en chunks de ${concurrencyLimit} en paralelo`
+  );
+
+  for (let chunkIndex = 0; chunkIndex < batchChunks.length; chunkIndex++) {
+    const chunk = batchChunks[chunkIndex];
+
+    if (!chunk || chunk.length === 0) continue;
+
+    console.log(
+      `📦 Procesando chunk ${chunkIndex + 1}/${batchChunks.length} con ${
+        chunk.length
+      } batches paralelos`
+    );
+
+    try {
+      // Procesar batches del chunk en paralelo
+      const chunkResults = await Promise.allSettled(
+        chunk.map(async (batch, batchIndexInChunk) => {
+          const globalBatchIndex =
+            chunkIndex * concurrencyLimit + batchIndexInChunk;
+          return await processSingleBatch(
+            batch,
+            wooInstance,
+            sucursalId,
+            globalBatchIndex + 1,
+            batches.length
+          );
+        })
+      );
+
+      // Procesar resultados del chunk
+      chunkResults.forEach((result, batchIndexInChunk) => {
+        const globalBatchIndex =
+          chunkIndex * concurrencyLimit + batchIndexInChunk;
+
+        if (result.status === "fulfilled") {
+          const { uploadedCount, failedCount, errors } = result.value;
+          totalUploaded += uploadedCount;
+          totalFailed += failedCount;
+          allErrors.push(...errors);
+
+          console.log(
+            `✅ Batch ${
+              globalBatchIndex + 1
+            }: ${uploadedCount} exitosos, ${failedCount} fallidos`
+          );
+        } else {
+          console.error(
+            `❌ Error en batch ${globalBatchIndex + 1}:`,
+            result.reason
+          );
+          const batch = chunk[batchIndexInChunk];
+          if (batch) {
+            totalFailed += batch.length;
+          }
+          allErrors.push(
+            `Error en batch ${globalBatchIndex + 1}: ${result.reason}`
+          );
+        }
+      });
+
+      // Delay adaptativo entre chunks (no entre batches individuales)
+      if (chunkIndex < batchChunks.length - 1) {
+        const avgResponseTime =
+          performanceMetrics.get(sucursalId)?.avgResponseTime || 1000;
+        const chunkDelay = Math.min(
+          Math.max(
+            avgResponseTime * CONFIG.ADAPTIVE_DELAYS.CHUNK_DELAY_MULTIPLIER,
+            CONFIG.ADAPTIVE_DELAYS.CHUNK_MIN_DELAY
+          ),
+          CONFIG.ADAPTIVE_DELAYS.CHUNK_MAX_DELAY
+        );
+        console.log(`⏳ Delay entre chunks: ${chunkDelay}ms`);
+        await new Promise((resolve) => setTimeout(resolve, chunkDelay));
+      }
+    } catch (error) {
+      console.error(`❌ Error procesando chunk ${chunkIndex + 1}:`, error);
+      // Contar todos los productos del chunk como fallidos
+      const chunkSize = chunk.reduce((total, batch) => total + batch.length, 0);
+      totalFailed += chunkSize;
+      allErrors.push(
+        `Error en chunk ${chunkIndex + 1}: ${
+          error instanceof Error ? error.message : "Error desconocido"
+        }`
+      );
+    }
+  }
+
+  return {
+    uploadedCount: totalUploaded,
+    failedCount: totalFailed,
+    errors: allErrors,
+  };
+}
+
+// Función para procesar un solo batch
+async function processSingleBatch(
+  batch: WooCommerceProductFromSucursal[],
+  wooInstance: WooCommerceRestApi,
+  sucursalId: number,
+  batchNumber: number,
+  totalBatches: number
+): Promise<{
+  uploadedCount: number;
+  failedCount: number;
+  errors: string[];
+}> {
+  let uploadedCount = 0;
+  let failedCount = 0;
+  const errors: string[] = [];
+
+  const batchStartTime = Date.now();
+
+  // REINTENTOS para manejar errores de conexión
+  let retryCount = 0;
+  const maxRetries = CONFIG.RETRY.MAX_RETRIES;
+  let batchSuccess = false;
+
+  while (retryCount < maxRetries && !batchSuccess) {
+    try {
+      // Crear productos usando la API batch
+      const response = await wooInstance.post("products/batch", {
+        create: batch,
+      });
+
+      const responseTime = Date.now() - batchStartTime;
+      console.log(
+        `✅ Batch ${batchNumber}/${totalBatches}: Response en ${responseTime}ms, status: ${response.status}`
+      );
+
+      // Actualizar métricas para delays adaptativos
+      calculateAdaptiveDelay(sucursalId, responseTime);
+      batchSuccess = true;
+
+      if (response.data) {
+        const batchResult = response.data;
+
+        // Procesar productos creados
+        if (batchResult.create && batchResult.create.length > 0) {
+          batchResult.create.forEach((product: any, index: number) => {
+            if (
+              product.id !== null &&
+              product.id !== undefined &&
+              product.id > 0
+            ) {
+              uploadedCount++;
+            } else {
+              failedCount++;
+              const originalProduct = batch[index];
+              if (originalProduct) {
+                errors.push(`SKU ${originalProduct.sku}: Error en creación`);
+              }
+            }
+          });
+        }
+
+        // Procesar errores
+        if (batchResult.error && batchResult.error.length > 0) {
+          batchResult.error.forEach((error: any, index: number) => {
+            const originalProduct =
+              batch[index + (batchResult.create?.length || 0)];
+            if (originalProduct) {
+              failedCount++;
+              errors.push(
+                `SKU ${originalProduct.sku}: ${
+                  error.message || error.code || "Error desconocido"
+                }`
+              );
+            }
+          });
+        }
+      }
+
+      return { uploadedCount, failedCount, errors };
+    } catch (error) {
+      retryCount++;
+      const errorMessage =
+        error instanceof Error ? error.message : "Error desconocido";
+
+      if (
+        CONFIG.ERROR_PATTERNS.CONNECTION_ERRORS.some((pattern) =>
+          errorMessage.includes(pattern)
+        )
+      ) {
+        console.warn(
+          `⚠️ Error de conexión en batch ${batchNumber}, intento ${retryCount}/${maxRetries}: ${errorMessage}`
+        );
+
+        if (retryCount < maxRetries) {
+          const waitTime = retryCount * CONFIG.TIMEOUTS.RETRY_BASE_DELAY;
+          console.log(
+            `⏳ Esperando ${waitTime}ms antes de reintentar batch ${batchNumber}...`
+          );
+          await new Promise((resolve) => setTimeout(resolve, waitTime));
+        } else {
+          console.error(
+            `❌ Error persistente en batch ${batchNumber} después de ${maxRetries} intentos`
+          );
+          failedCount += batch.length;
+          errors.push(`Error en batch ${batchNumber}: ${errorMessage}`);
+        }
+      } else {
+        console.error(
+          `❌ Error no recuperable en batch ${batchNumber}:`,
+          error
+        );
+        failedCount += batch.length;
+        errors.push(`Error en batch ${batchNumber}: ${errorMessage}`);
+        break;
+      }
+    }
+  }
+
+  return { uploadedCount, failedCount, errors };
 }
 
 async function uploadProductsFromMultipleSucursales(
@@ -316,7 +640,7 @@ async function uploadProductsFromMultipleSucursales(
   }> = [];
 
   // OPTIMIZACIÓN: Procesamiento paralelo con límite de concurrencia
-  const concurrencyLimit = 3; // Máximo 3 sucursales en paralelo
+  const concurrencyLimit = CONFIG.CONCURRENCY.SUCURSALES_PARALELAS; // Máximo 3 sucursales en paralelo
   const chunks = [];
 
   for (let i = 0; i < sucursalFilePaths.length; i += concurrencyLimit) {
@@ -395,7 +719,9 @@ async function uploadProductsFromMultipleSucursales(
       // Delay entre chunks para no saturar el servidor
       if (chunks.indexOf(chunk) < chunks.length - 1) {
         console.log(`⏳ Delay entre chunks de sucursales...`);
-        await new Promise((resolve) => setTimeout(resolve, 2000));
+        await new Promise((resolve) =>
+          setTimeout(resolve, CONFIG.TIMEOUTS.CHUNKS_DELAY_SUCURSALES)
+        );
       }
     } catch (error) {
       console.error(`❌ Error procesando chunk de sucursales:`, error);
@@ -478,165 +804,53 @@ async function uploadProductsFromSucursalJson(jsonFilePath: string): Promise<{
       const imageUrls = newProducts
         .map((p) => p.images[0]?.src)
         .filter((url): url is string => Boolean(url));
-      const imageResults = await verifyImagesInBatch(imageUrls, 100);
+      const imageResults = await verifyImagesInBatch(
+        imageUrls,
+        CONFIG.CONCURRENCY.IMAGENES_PARALELAS
+      );
 
       // Actualizar productos con imagen de fallback si es necesario
       newProducts.forEach((product) => {
         const imageUrl = product.images[0]?.src;
         if (imageUrl && !imageResults.get(imageUrl)) {
-          product.images = [{ src: "https://vd.com.ar/images/0000.png" }];
+          product.images = [{ src: CONFIG.URLS.FALLBACK_IMAGE }];
         }
       });
       console.log(`✅ Verificación de imágenes completada`);
     }
 
-    const batchSize = 100; // Mantener en 50 como especificaste
+    const batchSize = CONFIG.BATCH_SIZES.CREACION; // Tamaño de batch
+    const batchConcurrency = CONFIG.CONCURRENCY.BATCHES_PARALELOS_POR_SUCURSAL; // Máximo 2 batches en paralelo por sucursal
 
-    // FASE 1: Crear productos nuevos
+    // FASE 1: Crear productos nuevos con batches paralelos
     if (newProducts.length > 0) {
-      const totalBatches = Math.ceil(newProducts.length / batchSize);
+      // Dividir productos en batches
+      const batches = [];
+      for (let i = 0; i < newProducts.length; i += batchSize) {
+        batches.push(newProducts.slice(i, i + batchSize));
+      }
+
       console.log(
-        `📦 Iniciando creación de ${newProducts.length} productos nuevos en ${totalBatches} batches...`
+        `📦 Iniciando creación de ${newProducts.length} productos nuevos en ${batches.length} batches (${batchConcurrency} en paralelo)...`
       );
 
-      for (let batchIndex = 0; batchIndex < totalBatches; batchIndex++) {
-        const start = batchIndex * batchSize;
-        const end = start + batchSize;
-        const batch = newProducts.slice(start, end);
+      const createResult = await processBatchesInParallel(
+        batches,
+        wooInstance,
+        sucursal_id,
+        batchConcurrency
+      );
 
-        console.log(
-          `📤 Procesando batch ${batchIndex + 1}/${totalBatches} (${
-            batch.length
-          } productos)`
-        );
+      uploadedCount += createResult.uploadedCount;
+      failedCount += createResult.failedCount;
+      errors.push(...createResult.errors);
 
-        const batchStartTime = Date.now();
-
-        // REINTENTOS para manejar errores de conexión
-        let retryCount = 0;
-        const maxRetries = 3;
-        let batchSuccess = false;
-
-        while (retryCount < maxRetries && !batchSuccess) {
-          try {
-            // Crear productos usando la API batch
-            const response = await wooInstance.post("products/batch", {
-              create: batch,
-            });
-
-            const responseTime = Date.now() - batchStartTime;
-            console.log(
-              `✅ Response recibido en ${responseTime}ms, status: ${response.status}`
-            );
-            batchSuccess = true;
-
-            if (response.data) {
-              const batchResult = response.data;
-
-              // Procesar productos creados
-              if (batchResult.create && batchResult.create.length > 0) {
-                let batchCreated = 0;
-
-                batchResult.create.forEach((product: any, index: number) => {
-                  if (
-                    product.id !== null &&
-                    product.id !== undefined &&
-                    product.id > 0
-                  ) {
-                    uploadedCount++;
-                    batchCreated++;
-                  } else {
-                    failedCount++;
-                    const originalProduct = batch[index];
-                    if (originalProduct) {
-                      errors.push(
-                        `SKU ${originalProduct.sku}: Error en creación`
-                      );
-                    }
-                  }
-                });
-
-                console.log(
-                  `✅ Batch ${
-                    batchIndex + 1
-                  }: ${batchCreated} creados exitosamente`
-                );
-              }
-
-              // Procesar errores
-              if (batchResult.error && batchResult.error.length > 0) {
-                console.log(
-                  `❌ ${batchResult.error.length} errores en batch ${
-                    batchIndex + 1
-                  }`
-                );
-
-                batchResult.error.forEach((error: any, index: number) => {
-                  const originalProduct =
-                    batch[index + (batchResult.create?.length || 0)];
-                  if (originalProduct) {
-                    failedCount++;
-                    errors.push(
-                      `SKU ${originalProduct.sku}: ${
-                        error.message || error.code || "Error desconocido"
-                      }`
-                    );
-                  }
-                });
-              }
-            }
-
-            // Delay adaptativo basado en tiempo de respuesta
-            const delay = calculateAdaptiveDelay(sucursal_id, responseTime);
-            await new Promise((resolve) => setTimeout(resolve, delay));
-          } catch (error) {
-            retryCount++;
-            const errorMessage =
-              error instanceof Error ? error.message : "Error desconocido";
-
-            if (
-              errorMessage.includes("socket hang up") ||
-              errorMessage.includes("ECONNRESET") ||
-              errorMessage.includes("timeout")
-            ) {
-              console.warn(
-                `⚠️ Error de conexión en batch ${
-                  batchIndex + 1
-                }, intento ${retryCount}/${maxRetries}: ${errorMessage}`
-              );
-
-              if (retryCount < maxRetries) {
-                const waitTime = retryCount * 2000;
-                console.log(
-                  `⏳ Esperando ${waitTime}ms antes de reintentar...`
-                );
-                await new Promise((resolve) => setTimeout(resolve, waitTime));
-              } else {
-                console.error(
-                  `❌ Error persistente en batch ${
-                    batchIndex + 1
-                  } después de ${maxRetries} intentos`
-                );
-                failedCount += batch.length;
-                errors.push(
-                  `Error en batch ${batchIndex + 1}: ${errorMessage}`
-                );
-              }
-            } else {
-              console.error(
-                `❌ Error no recuperable en batch ${batchIndex + 1}:`,
-                error
-              );
-              failedCount += batch.length;
-              errors.push(`Error en batch ${batchIndex + 1}: ${errorMessage}`);
-              break;
-            }
-          }
-        }
-      }
+      console.log(
+        `✅ Fase 1 completada: ${createResult.uploadedCount} creados, ${createResult.failedCount} fallidos`
+      );
     }
 
-    // FASE 2: Actualizar productos duplicados con optimización
+    // FASE 2: Actualizar productos duplicados (mantener secuencial por simplicidad)
     if (duplicateProducts.length > 0) {
       console.log(
         `🔄 Iniciando actualización de ${duplicateProducts.length} productos existentes...`
@@ -649,18 +863,18 @@ async function uploadProductsFromSucursalJson(jsonFilePath: string): Promise<{
         .filter((url): url is string => Boolean(url));
       const duplicateImageResults = await verifyImagesInBatch(
         duplicateImageUrls,
-        100
+        CONFIG.CONCURRENCY.IMAGENES_PARALELAS
       );
 
       // Actualizar productos con imagen de fallback si es necesario
       duplicateProducts.forEach((product) => {
         const imageUrl = product.images[0]?.src;
         if (imageUrl && !duplicateImageResults.get(imageUrl)) {
-          product.images = [{ src: "https://vd.com.ar/images/0000.png" }];
+          product.images = [{ src: CONFIG.URLS.FALLBACK_IMAGE }];
         }
       });
 
-      const updateBatchSize = 50; // Menor tamaño para actualizaciones
+      const updateBatchSize = CONFIG.BATCH_SIZES.ACTUALIZACION; // Menor tamaño para actualizaciones
       const updateBatches = Math.ceil(
         duplicateProducts.length / updateBatchSize
       );
@@ -708,15 +922,26 @@ async function uploadProductsFromSucursalJson(jsonFilePath: string): Promise<{
 
           // Ejecutar búsquedas en chunks para no saturar
           const searchChunks = [];
-          for (let i = 0; i < searchPromises.length; i += 5) {
-            searchChunks.push(searchPromises.slice(i, i + 5));
+          for (
+            let i = 0;
+            i < searchPromises.length;
+            i += CONFIG.CONCURRENCY.BUSQUEDAS_PARALELAS_UPDATES
+          ) {
+            searchChunks.push(
+              searchPromises.slice(
+                i,
+                i + CONFIG.CONCURRENCY.BUSQUEDAS_PARALELAS_UPDATES
+              )
+            );
           }
 
           const allResults = [];
           for (const chunk of searchChunks) {
             const chunkResults = await Promise.all(chunk);
             allResults.push(...chunkResults);
-            await new Promise((resolve) => setTimeout(resolve, 100)); // Pequeño delay entre chunks de búsqueda
+            await new Promise((resolve) =>
+              setTimeout(resolve, CONFIG.TIMEOUTS.UPDATE_SEARCH_CHUNK_DELAY)
+            ); // Pequeño delay entre chunks de búsqueda
           }
 
           // Filtrar productos válidos para actualización
@@ -779,7 +1004,9 @@ async function uploadProductsFromSucursalJson(jsonFilePath: string): Promise<{
         }
 
         // Delay adaptativo entre batches de actualización
-        const delay = calculateAdaptiveDelay(sucursal_id, 1000) / 2; // Delay menor para actualizaciones
+        const delay =
+          calculateAdaptiveDelay(sucursal_id, 1000) /
+          CONFIG.ADAPTIVE_DELAYS.UPDATE_DELAY_DIVISOR; // Delay menor para actualizaciones
         await new Promise((resolve) => setTimeout(resolve, delay));
       }
 
@@ -825,7 +1052,7 @@ function convertToWooCommerceFormat(
     const cleanDescription = producto.description.trim();
     const cleanShortDescription = producto.short_description.trim();
     const productName = cleanDescription || cleanShortDescription || "";
-    const imageUrl = `https://vd.com.ar/images/${producto.sku}.png`;
+    const imageUrl = `${CONFIG.URLS.IMAGE_BASE_URL}${producto.sku}.png`;
     const categoriaDefault = CATEGORIAS_POR_ID[producto.meta_data];
     const categoriaWoocommerce = Object.values(
       CATEGORIAS_POR_ID_AUTOPISTA
@@ -844,9 +1071,9 @@ function convertToWooCommerceFormat(
       description: cleanDescription,
       short_description: cleanShortDescription,
       categories,
-      type: "simple",
-      status: "publish",
-      stock_status: "instock",
+      type: CONFIG.WOOCOMMERCE.PRODUCT_TYPE,
+      status: CONFIG.WOOCOMMERCE.PRODUCT_STATUS,
+      stock_status: CONFIG.WOOCOMMERCE.STOCK_STATUS,
       images: [
         {
           src: imageUrl,
@@ -876,7 +1103,7 @@ async function deleteAllProductsFromSucursal(
 
   let totalDeleted = 0;
   const errors: string[] = [];
-  const perPage = 100;
+  const perPage = CONFIG.BATCH_SIZES.ELIMINACION;
 
   console.log(`🗑️ Iniciando borrado de productos para sucursal ${sucursalId}`);
 
@@ -885,7 +1112,7 @@ async function deleteAllProductsFromSucursal(
       // SIEMPRE arrancamos en page=1 porque la lista cambia al borrar
       const response = await wooInstance.get("products", {
         per_page: perPage,
-        page: 1,
+        page: CONFIG.WOOCOMMERCE.DELETE_PAGE,
       });
 
       const products = response.data;
@@ -910,7 +1137,9 @@ async function deleteAllProductsFromSucursal(
       }
 
       // Pequeño delay para no saturar
-      await new Promise((resolve) => setTimeout(resolve, 300));
+      await new Promise((resolve) =>
+        setTimeout(resolve, CONFIG.TIMEOUTS.DELETE_BATCH_DELAY)
+      );
     } catch (err) {
       console.error(`❌ Error en borrado:`, err);
       errors.push(
