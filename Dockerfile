@@ -377,8 +377,8 @@ CMD ["node", "dist/index.js"]
 # docker save -o yaguar-sync.tar joelnicolass/yaguar-sync
 
 # amd64
-# docker buildx build --platform linux/amd64 -t yaguar-sync:amd64 --load .
-# docker save -o yaguar-sync_amd64.tar yaguar-sync:amd64
+#docker buildx build --platform linux/amd64 -t yaguar-sync:amd64 --load .
+#docker save -o yaguar-sync_amd64.tar yaguar-sync:amd64
 
 # arm64
 # docker buildx build --platform linux/arm64 -t yaguar-sync:arm64 --load .

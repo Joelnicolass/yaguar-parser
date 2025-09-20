@@ -118,6 +118,14 @@ const CONFIG = {
     JSON_EXTENSION: process.env.CONFIG_JSON_EXTENSION || ".json",
   },
 
+  // Configuración de optimizaciones
+  OPTIMIZATION: {
+    SKIP_SAME_PRICE_UPDATES:
+      process.env.CONFIG_SKIP_SAME_PRICE_UPDATES === "true" || true,
+    PRICE_COMPARISON_FIELDS:
+      process.env.CONFIG_PRICE_COMPARISON_FIELDS || "id,sku,regular_price,name",
+  },
+
   // Configuración de campos WooCommerce
   WOOCOMMERCE: {
     VERSION: process.env.CONFIG_WOOCOMMERCE_VERSION || "wc/v3",
@@ -449,6 +457,96 @@ async function getAllExistingSkus(
 
   console.log(`✅ Total SKUs existentes encontrados: ${existingSkus.size}`);
   return existingSkus;
+}
+
+// Nueva función optimizada para obtener productos existentes con precios para comparación
+async function getAllExistingProductsWithPrices(
+  wooInstance: WooCommerceRestApi
+): Promise<Map<string, { id: number; regular_price: string; name: string }>> {
+  const existingProducts = new Map<
+    string,
+    { id: number; regular_price: string; name: string }
+  >();
+  let page = 1;
+  const perPage = CONFIG.BATCH_SIZES.PAGINACION_SKUS;
+
+  console.log(
+    `🔍 Obteniendo productos existentes con precios para comparación...`
+  );
+
+  try {
+    while (true) {
+      const response = await wooInstance.get("products", {
+        per_page: perPage,
+        page,
+        _fields: CONFIG.OPTIMIZATION.PRICE_COMPARISON_FIELDS, // Obtener campos necesarios para comparación
+      });
+
+      const products = response.data;
+      if (!products || products.length === 0) break;
+
+      products.forEach((product: any) => {
+        if (product.sku) {
+          existingProducts.set(product.sku, {
+            id: product.id,
+            regular_price: product.regular_price || "0",
+            name: product.name || "",
+          });
+        }
+      });
+
+      console.log(
+        `📄 Página ${page}: ${products.length} productos, ${existingProducts.size} productos con precios acumulados`
+      );
+      page++;
+
+      // Delay pequeño para no saturar
+      await new Promise((resolve) =>
+        setTimeout(resolve, CONFIG.TIMEOUTS.SKU_FETCH_DELAY)
+      );
+    }
+  } catch (error) {
+    console.warn(
+      `⚠️ Error obteniendo productos existentes con precios:`,
+      error
+    );
+  }
+
+  console.log(
+    `✅ Total productos con precios encontrados: ${existingProducts.size}`
+  );
+  return existingProducts;
+}
+
+// Función para comparar si el precio ha cambiado
+function shouldUpdateProduct(
+  newProduct: WooCommerceProductFromSucursal,
+  existingProduct: { id: number; regular_price: string; name: string }
+): boolean {
+  // Si la optimización de comparación de precios está deshabilitada, siempre actualizar
+  if (!CONFIG.OPTIMIZATION.SKIP_SAME_PRICE_UPDATES) {
+    return true;
+  }
+
+  // Normalizar precios para comparación (remover espacios, convertir a número)
+  const newPrice = parseFloat(newProduct.regular_price.toString().trim()) || 0;
+  const existingPrice =
+    parseFloat(existingProduct.regular_price.toString().trim()) || 0;
+
+  // Comparar precios con tolerancia mínima para errores de punto flotante
+  const priceChanged = Math.abs(newPrice - existingPrice) > 0.01;
+
+  if (!priceChanged) {
+    console.log(
+      `⏭️ SKU ${newProduct.sku}: Precio sin cambios ($${existingPrice}) - omitiendo actualización`
+    );
+    return false;
+  }
+
+  console.log(
+    `💰 SKU ${newProduct.sku}: Precio cambió de $${existingPrice} a $${newPrice} - requiere actualización`
+  );
+  return true;
 }
 
 // Función para calcular delay adaptativo
@@ -1328,6 +1426,7 @@ async function uploadProductsFromSucursalJson(jsonFilePath: string): Promise<{
   errors: string[];
   duration: number;
   sucursal_info?: { id: number; nombre: string };
+  skippedCount?: number;
 }> {
   const startTime = Date.now();
   let uploadedCount = 0;
@@ -1354,8 +1453,33 @@ async function uploadProductsFromSucursalJson(jsonFilePath: string): Promise<{
       `🚀 Procesando ${productos.length} productos para sucursal ${nombre_sucursal}`
     );
 
-    // OPTIMIZACIÓN: Obtener SKUs existentes al inicio
-    const existingSkus = await getAllExistingSkus(wooInstance);
+    // OPTIMIZACIÓN MEJORADA: Obtener productos existentes con precios para comparación inteligente
+    let existingProductsWithPrices = new Map<
+      string,
+      { id: number; regular_price: string; name: string }
+    >();
+    let skippedCount = 0;
+
+    if (CONFIG.OPTIMIZATION.SKIP_SAME_PRICE_UPDATES) {
+      console.log(
+        "💰 Optimización de precios habilitada - obteniendo productos existentes con precios..."
+      );
+      existingProductsWithPrices = await getAllExistingProductsWithPrices(
+        wooInstance
+      );
+    } else {
+      // Fallback al método anterior si la optimización está deshabilitada
+      console.log("🔍 Usando método tradicional de obtención de SKUs...");
+      const existingSkus = await getAllExistingSkus(wooInstance);
+      // Convertir Set a Map para compatibilidad
+      existingSkus.forEach((sku) => {
+        existingProductsWithPrices.set(sku, {
+          id: 0,
+          regular_price: "0",
+          name: "",
+        });
+      });
+    }
 
     // Convertir productos usando la función legacy
     const productsBatch = convertToWooCommerceFormat(productos, {
@@ -1365,17 +1489,42 @@ async function uploadProductsFromSucursalJson(jsonFilePath: string): Promise<{
 
     console.log(`📦 Productos convertidos: ${productsBatch.length}`);
 
-    // OPTIMIZACIÓN: Separar productos nuevos y existentes desde el inicio
+    // OPTIMIZACIÓN: Separar productos nuevos, para actualizar y para omitir
     const newProducts = productsBatch.filter(
-      (product) => !existingSkus.has(product.sku)
-    );
-    const duplicateProducts = productsBatch.filter((product) =>
-      existingSkus.has(product.sku)
+      (product) => !existingProductsWithPrices.has(product.sku)
     );
 
-    console.log(
-      `📊 Distribución: ${newProducts.length} nuevos, ${duplicateProducts.length} para actualizar`
+    const existingProducts = productsBatch.filter((product) =>
+      existingProductsWithPrices.has(product.sku)
     );
+
+    // Aplicar lógica de comparación de precios para productos existentes
+    const productsToUpdate: WooCommerceProductFromSucursal[] = [];
+    const productsToSkip: WooCommerceProductFromSucursal[] = [];
+
+    existingProducts.forEach((product) => {
+      const existingProduct = existingProductsWithPrices.get(product.sku);
+      if (existingProduct && shouldUpdateProduct(product, existingProduct)) {
+        productsToUpdate.push(product);
+      } else {
+        productsToSkip.push(product);
+        skippedCount++;
+      }
+    });
+
+    console.log(
+      `📊 Distribución optimizada: ${newProducts.length} nuevos, ${productsToUpdate.length} para actualizar, ${productsToSkip.length} omitidos (precio sin cambios)`
+    );
+
+    // Log de productos omitidos para transparencia
+    if (productsToSkip.length > 0) {
+      console.log(
+        `⏭️ Productos omitidos por precio sin cambios: ${productsToSkip
+          .map((p) => p.sku)
+          .slice(0, 10)
+          .join(", ")}${productsToSkip.length > 10 ? "..." : ""}`
+      );
+    }
 
     // OPTIMIZACIÓN: Verificar imágenes en lotes para productos nuevos
     if (newProducts.length > 0) {
@@ -1432,14 +1581,14 @@ async function uploadProductsFromSucursalJson(jsonFilePath: string): Promise<{
     }
 
     // FASE 2: Actualizar productos duplicados con batches paralelos
-    if (duplicateProducts.length > 0) {
+    if (productsToUpdate.length > 0) {
       console.log(
-        `🔄 Iniciando actualización de ${duplicateProducts.length} productos existentes...`
+        `🔄 Iniciando actualización de ${productsToUpdate.length} productos existentes...`
       );
 
       // Pre-verificar imágenes para productos duplicados
       console.log(`🖼️ Verificando imágenes para productos duplicados...`);
-      const duplicateImageUrls = duplicateProducts
+      const duplicateImageUrls = productsToUpdate
         .map((p) => p.images[0]?.src)
         .filter((url): url is string => Boolean(url));
       const duplicateImageResults = await verifyImagesInBatch(
@@ -1448,7 +1597,7 @@ async function uploadProductsFromSucursalJson(jsonFilePath: string): Promise<{
       );
 
       // Actualizar productos con imagen de fallback si es necesario
-      duplicateProducts.forEach((product) => {
+      productsToUpdate.forEach((product) => {
         const imageUrl = product.images[0]?.src;
         if (imageUrl && !duplicateImageResults.get(imageUrl)) {
           product.images = [{ src: CONFIG.URLS.FALLBACK_IMAGE }];
@@ -1458,12 +1607,12 @@ async function uploadProductsFromSucursalJson(jsonFilePath: string): Promise<{
       // Dividir productos duplicados en batches
       const updateBatchSize = CONFIG.BATCH_SIZES.ACTUALIZACION;
       const updateBatches = [];
-      for (let i = 0; i < duplicateProducts.length; i += updateBatchSize) {
-        updateBatches.push(duplicateProducts.slice(i, i + updateBatchSize));
+      for (let i = 0; i < productsToUpdate.length; i += updateBatchSize) {
+        updateBatches.push(productsToUpdate.slice(i, i + updateBatchSize));
       }
 
       console.log(
-        `📦 Iniciando actualización de ${duplicateProducts.length} productos en ${updateBatches.length} batches (${batchConcurrency} en paralelo)...`
+        `📦 Iniciando actualización de ${productsToUpdate.length} productos en ${updateBatches.length} batches (${batchConcurrency} en paralelo)...`
       );
 
       const updateResult = await processUpdateBatchesInParallel(
@@ -1485,7 +1634,7 @@ async function uploadProductsFromSucursalJson(jsonFilePath: string): Promise<{
     const duration = Date.now() - startTime;
 
     console.log(
-      `✅ Proceso completado para ${nombre_sucursal}: ${uploadedCount} exitosos, ${failedCount} fallidos en ${duration}ms`
+      `✅ Proceso completado para ${nombre_sucursal}: ${uploadedCount} exitosos, ${failedCount} fallidos, ${skippedCount} omitidos (precio sin cambios) en ${duration}ms`
     );
 
     return {
@@ -1495,6 +1644,7 @@ async function uploadProductsFromSucursalJson(jsonFilePath: string): Promise<{
       errors,
       duration,
       sucursal_info: { id: sucursal_id, nombre: nombre_sucursal },
+      skippedCount, // Agregar conteo de productos omitidos
     };
   } catch (error) {
     const duration = Date.now() - startTime;
