@@ -478,7 +478,7 @@ async function uploadProductsFromSucursalJson(jsonFilePath: string): Promise<{
       const imageUrls = newProducts
         .map((p) => p.images[0]?.src)
         .filter((url): url is string => Boolean(url));
-      const imageResults = await verifyImagesInBatch(imageUrls, 15);
+      const imageResults = await verifyImagesInBatch(imageUrls, 100);
 
       // Actualizar productos con imagen de fallback si es necesario
       newProducts.forEach((product) => {
@@ -490,7 +490,7 @@ async function uploadProductsFromSucursalJson(jsonFilePath: string): Promise<{
       console.log(`✅ Verificación de imágenes completada`);
     }
 
-    const batchSize = 50; // Mantener en 50 como especificaste
+    const batchSize = 100; // Mantener en 50 como especificaste
 
     // FASE 1: Crear productos nuevos
     if (newProducts.length > 0) {
@@ -649,7 +649,7 @@ async function uploadProductsFromSucursalJson(jsonFilePath: string): Promise<{
         .filter((url): url is string => Boolean(url));
       const duplicateImageResults = await verifyImagesInBatch(
         duplicateImageUrls,
-        15
+        100
       );
 
       // Actualizar productos con imagen de fallback si es necesario
@@ -660,7 +660,7 @@ async function uploadProductsFromSucursalJson(jsonFilePath: string): Promise<{
         }
       });
 
-      const updateBatchSize = 25; // Menor tamaño para actualizaciones
+      const updateBatchSize = 50; // Menor tamaño para actualizaciones
       const updateBatches = Math.ceil(
         duplicateProducts.length / updateBatchSize
       );
