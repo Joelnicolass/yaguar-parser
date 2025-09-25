@@ -24,10 +24,20 @@ export interface SucursalCredenciales {
  * antes de usar en producción.
  */
 export const SUCURSALES_CREDENCIALES: Record<number, SucursalCredenciales> = {
-  /* 3: {
-    sucursal_id: parseInt(process.env.WOOCOMMERCE_CAMPANA_SUCURSAL_ID || "3"),
+  2: {
+    nombre: process.env.WOOCOMMERCE_TIGRE_NOMBRE || "Tigre",
+    credenciales: {
+      sucursal_id: parseInt(process.env.WOOCOMMERCE_TIGRE_SUCURSAL_ID || "2"),
+      url: process.env.WOOCOMMERCE_TIGRE_URL || "https://tigre.example.com",
+      consumerKey: process.env.WOOCOMMERCE_TIGRE_KEY || "ck_tigre_key",
+      consumerSecret: process.env.WOOCOMMERCE_TIGRE_SECRET || "cs_tigre_secret",
+      version: process.env.WOOCOMMERCE_VERSION || "wc/v3",
+    },
+  },
+  3: {
     nombre: process.env.WOOCOMMERCE_CAMPANA_NOMBRE || "Campana",
     credenciales: {
+      sucursal_id: parseInt(process.env.WOOCOMMERCE_CAMPANA_SUCURSAL_ID || "3"),
       url: process.env.WOOCOMMERCE_CAMPANA_URL || "https://campana.example.com",
       consumerKey: process.env.WOOCOMMERCE_CAMPANA_KEY || "ck_campana_key",
       consumerSecret:
@@ -36,9 +46,11 @@ export const SUCURSALES_CREDENCIALES: Record<number, SucursalCredenciales> = {
     },
   },
   4: {
-    sucursal_id: parseInt(process.env.WOOCOMMERCE_JOSECPAZ_SUCURSAL_ID || "4"),
     nombre: process.env.WOOCOMMERCE_JOSECPAZ_NOMBRE || "José C. Paz",
     credenciales: {
+      sucursal_id: parseInt(
+        process.env.WOOCOMMERCE_JOSECPAZ_SUCURSAL_ID || "4"
+      ),
       url:
         process.env.WOOCOMMERCE_JOSECPAZ_URL || "https://josecpaz.example.com",
       consumerKey: process.env.WOOCOMMERCE_JOSECPAZ_KEY || "ck_josecpaz_key",
@@ -48,9 +60,9 @@ export const SUCURSALES_CREDENCIALES: Record<number, SucursalCredenciales> = {
     },
   },
   5: {
-    sucursal_id: parseInt(process.env.WOOCOMMERCE_SANTAFE_SUCURSAL_ID || "5"),
     nombre: process.env.WOOCOMMERCE_SANTAFE_NOMBRE || "Santa Fe",
     credenciales: {
+      sucursal_id: parseInt(process.env.WOOCOMMERCE_SANTAFE_SUCURSAL_ID || "5"),
       url: process.env.WOOCOMMERCE_SANTAFE_URL || "https://santafe.example.com",
       consumerKey: process.env.WOOCOMMERCE_SANTAFE_KEY || "ck_santafe_key",
       consumerSecret:
@@ -59,9 +71,9 @@ export const SUCURSALES_CREDENCIALES: Record<number, SucursalCredenciales> = {
     },
   },
   6: {
-    sucursal_id: parseInt(process.env.WOOCOMMERCE_CORDOBA_SUCURSAL_ID || "6"),
     nombre: process.env.WOOCOMMERCE_CORDOBA_NOMBRE || "Córdoba",
     credenciales: {
+      sucursal_id: parseInt(process.env.WOOCOMMERCE_CORDOBA_SUCURSAL_ID || "6"),
       url: process.env.WOOCOMMERCE_CORDOBA_URL || "https://cordoba.example.com",
       consumerKey: process.env.WOOCOMMERCE_CORDOBA_KEY || "ck_cordoba_key",
       consumerSecret:
@@ -70,9 +82,9 @@ export const SUCURSALES_CREDENCIALES: Record<number, SucursalCredenciales> = {
     },
   },
   8: {
-    sucursal_id: parseInt(process.env.WOOCOMMERCE_NEUQUEN_SUCURSAL_ID || "8"),
     nombre: process.env.WOOCOMMERCE_NEUQUEN_NOMBRE || "Neuquén",
     credenciales: {
+      sucursal_id: parseInt(process.env.WOOCOMMERCE_NEUQUEN_SUCURSAL_ID || "8"),
       url: process.env.WOOCOMMERCE_NEUQUEN_URL || "https://neuquen.example.com",
       consumerKey: process.env.WOOCOMMERCE_NEUQUEN_KEY || "ck_neuquen_key",
       consumerSecret:
@@ -81,15 +93,15 @@ export const SUCURSALES_CREDENCIALES: Record<number, SucursalCredenciales> = {
     },
   },
   9: {
-    sucursal_id: parseInt(process.env.WOOCOMMERCE_SALTA_SUCURSAL_ID || "9"),
     nombre: process.env.WOOCOMMERCE_SALTA_NOMBRE || "Salta",
     credenciales: {
+      sucursal_id: parseInt(process.env.WOOCOMMERCE_SALTA_SUCURSAL_ID || "9"),
       url: process.env.WOOCOMMERCE_SALTA_URL || "https://salta.example.com",
       consumerKey: process.env.WOOCOMMERCE_SALTA_KEY || "ck_salta_key",
       consumerSecret: process.env.WOOCOMMERCE_SALTA_SECRET || "cs_salta_secret",
       version: process.env.WOOCOMMERCE_VERSION || "wc/v3",
     },
-  }, */
+  },
   10: {
     nombre: process.env.WOOCOMMERCE_AUTOPISTA_NOMBRE || "Autopista",
     credenciales: {
@@ -104,10 +116,12 @@ export const SUCURSALES_CREDENCIALES: Record<number, SucursalCredenciales> = {
       version: process.env.WOOCOMMERCE_VERSION || "wc/v3",
     },
   },
-  /* 12: {
-    sucursal_id: parseInt(process.env.WOOCOMMERCE_MARDELPLATA_SUCURSAL_ID || "12"),
+  12: {
     nombre: process.env.WOOCOMMERCE_MARDELPLATA_NOMBRE || "Mar del Plata",
     credenciales: {
+      sucursal_id: parseInt(
+        process.env.WOOCOMMERCE_MARDELPLATA_SUCURSAL_ID || "12"
+      ),
       url:
         process.env.WOOCOMMERCE_MARDELPLATA_URL ||
         "https://mardelplata.example.com",
@@ -119,9 +133,11 @@ export const SUCURSALES_CREDENCIALES: Record<number, SucursalCredenciales> = {
     },
   },
   13: {
-    sucursal_id: parseInt(process.env.WOOCOMMERCE_BAHIABLANCA_SUCURSAL_ID || "13"),
     nombre: process.env.WOOCOMMERCE_BAHIABLANCA_NOMBRE || "Bahía Blanca",
     credenciales: {
+      sucursal_id: parseInt(
+        process.env.WOOCOMMERCE_BAHIABLANCA_SUCURSAL_ID || "13"
+      ),
       url:
         process.env.WOOCOMMERCE_BAHIABLANCA_URL ||
         "https://bahiablanca.example.com",
@@ -133,9 +149,11 @@ export const SUCURSALES_CREDENCIALES: Record<number, SucursalCredenciales> = {
     },
   },
   14: {
-    sucursal_id: parseInt(process.env.WOOCOMMERCE_MENDOZA_SUCURSAL_ID || "14"),
     nombre: process.env.WOOCOMMERCE_MENDOZA_NOMBRE || "Mendoza",
     credenciales: {
+      sucursal_id: parseInt(
+        process.env.WOOCOMMERCE_MENDOZA_SUCURSAL_ID || "14"
+      ),
       url: process.env.WOOCOMMERCE_MENDOZA_URL || "https://mendoza.example.com",
       consumerKey: process.env.WOOCOMMERCE_MENDOZA_KEY || "ck_mendoza_key",
       consumerSecret:
@@ -144,9 +162,9 @@ export const SUCURSALES_CREDENCIALES: Record<number, SucursalCredenciales> = {
     },
   },
   15: {
-    sucursal_id: parseInt(process.env.WOOCOMMERCE_CHACO_SUCURSAL_ID || "15"),
     nombre: process.env.WOOCOMMERCE_CHACO_NOMBRE || "Chaco",
     credenciales: {
+      sucursal_id: parseInt(process.env.WOOCOMMERCE_CHACO_SUCURSAL_ID || "15"),
       url: process.env.WOOCOMMERCE_CHACO_URL || "https://chaco.example.com",
       consumerKey: process.env.WOOCOMMERCE_CHACO_KEY || "ck_chaco_key",
       consumerSecret: process.env.WOOCOMMERCE_CHACO_SECRET || "cs_chaco_secret",
@@ -154,9 +172,11 @@ export const SUCURSALES_CREDENCIALES: Record<number, SucursalCredenciales> = {
     },
   },
   16: {
-    sucursal_id: parseInt(process.env.WOOCOMMERCE_SANJUAN_SUCURSAL_ID || "16"),
     nombre: process.env.WOOCOMMERCE_SANJUAN_NOMBRE || "San Juan",
     credenciales: {
+      sucursal_id: parseInt(
+        process.env.WOOCOMMERCE_SANJUAN_SUCURSAL_ID || "16"
+      ),
       url: process.env.WOOCOMMERCE_SANJUAN_URL || "https://sanjuan.example.com",
       consumerKey: process.env.WOOCOMMERCE_SANJUAN_KEY || "ck_sanjuan_key",
       consumerSecret:
@@ -165,9 +185,9 @@ export const SUCURSALES_CREDENCIALES: Record<number, SucursalCredenciales> = {
     },
   },
   18: {
-    sucursal_id: parseInt(process.env.WOOCOMMERCE_MORENO_SUCURSAL_ID || "18"),
     nombre: process.env.WOOCOMMERCE_MORENO_NOMBRE || "Moreno",
     credenciales: {
+      sucursal_id: parseInt(process.env.WOOCOMMERCE_MORENO_SUCURSAL_ID || "18"),
       url: process.env.WOOCOMMERCE_MORENO_URL || "https://moreno.example.com",
       consumerKey: process.env.WOOCOMMERCE_MORENO_KEY || "ck_moreno_key",
       consumerSecret:
@@ -176,9 +196,11 @@ export const SUCURSALES_CREDENCIALES: Record<number, SucursalCredenciales> = {
     },
   },
   19: {
-    sucursal_id: parseInt(process.env.WOOCOMMERCE_MASCHWITZ_SUCURSAL_ID || "19"),
     nombre: process.env.WOOCOMMERCE_MASCHWITZ_NOMBRE || "Maschwitz",
     credenciales: {
+      sucursal_id: parseInt(
+        process.env.WOOCOMMERCE_MASCHWITZ_SUCURSAL_ID || "19"
+      ),
       url:
         process.env.WOOCOMMERCE_MASCHWITZ_URL ||
         "https://maschwitz.example.com",
@@ -189,9 +211,11 @@ export const SUCURSALES_CREDENCIALES: Record<number, SucursalCredenciales> = {
     },
   },
   20: {
-    sucursal_id: parseInt(process.env.WOOCOMMERCE_GRALROCA_SUCURSAL_ID || "20"),
     nombre: process.env.WOOCOMMERCE_GRALROCA_NOMBRE || "General Roca",
     credenciales: {
+      sucursal_id: parseInt(
+        process.env.WOOCOMMERCE_GRALROCA_SUCURSAL_ID || "20"
+      ),
       url:
         process.env.WOOCOMMERCE_GRALROCA_URL || "https://gralroca.example.com",
       consumerKey: process.env.WOOCOMMERCE_GRALROCA_KEY || "ck_gralroca_key",
@@ -201,9 +225,11 @@ export const SUCURSALES_CREDENCIALES: Record<number, SucursalCredenciales> = {
     },
   },
   21: {
-    sucursal_id: parseInt(process.env.WOOCOMMERCE_POSADAS_SUCURSAL_ID || "21"),
     nombre: process.env.WOOCOMMERCE_POSADAS_NOMBRE || "Posadas",
     credenciales: {
+      sucursal_id: parseInt(
+        process.env.WOOCOMMERCE_POSADAS_SUCURSAL_ID || "21"
+      ),
       url: process.env.WOOCOMMERCE_POSADAS_URL || "https://posadas.example.com",
       consumerKey: process.env.WOOCOMMERCE_POSADAS_KEY || "ck_posadas_key",
       consumerSecret:
@@ -212,9 +238,9 @@ export const SUCURSALES_CREDENCIALES: Record<number, SucursalCredenciales> = {
     },
   },
   22: {
-    sucursal_id: parseInt(process.env.WOOCOMMERCE_TRELEW_SUCURSAL_ID || "22"),
     nombre: process.env.WOOCOMMERCE_TRELEW_NOMBRE || "Trelew",
     credenciales: {
+      sucursal_id: parseInt(process.env.WOOCOMMERCE_TRELEW_SUCURSAL_ID || "22"),
       url: process.env.WOOCOMMERCE_TRELEW_URL || "https://trelew.example.com",
       consumerKey: process.env.WOOCOMMERCE_TRELEW_KEY || "ck_trelew_key",
       consumerSecret:
@@ -223,15 +249,15 @@ export const SUCURSALES_CREDENCIALES: Record<number, SucursalCredenciales> = {
     },
   },
   23: {
-    sucursal_id: parseInt(process.env.WOOCOMMERCE_JUJUY_SUCURSAL_ID || "23"),
     nombre: process.env.WOOCOMMERCE_JUJUY_NOMBRE || "Jujuy",
     credenciales: {
+      sucursal_id: parseInt(process.env.WOOCOMMERCE_JUJUY_SUCURSAL_ID || "23"),
       url: process.env.WOOCOMMERCE_JUJUY_URL || "https://jujuy.example.com",
       consumerKey: process.env.WOOCOMMERCE_JUJUY_KEY || "ck_jujuy_key",
       consumerSecret: process.env.WOOCOMMERCE_JUJUY_SECRET || "cs_jujuy_secret",
       version: process.env.WOOCOMMERCE_VERSION || "wc/v3",
     },
-  }, */
+  },
   24: {
     nombre: process.env.WOOCOMMERCE_CHACABUCO_NOMBRE || "Chacabuco",
     credenciales: {
@@ -294,6 +320,7 @@ export const ARCHIVO_A_SUCURSAL_ID: Record<string, number> = {
   "productos_sucursal_sanjuan.json": 16,
   "productos_sucursal_santafe.json": 5,
   "productos_sucursal_trelew.json": 22,
+  "productos_sucursal_tigre.json": 2,
 };
 
 export const SUCURSAL_ID_A_ARCHIVO: Record<number, string> = Object.entries(
