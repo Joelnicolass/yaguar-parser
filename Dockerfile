@@ -78,7 +78,7 @@ ENV TZ=America/Argentina/Buenos_Aires
 # Variables de entorno para SFTP
 ENV SFTP_HOST=209.46.122.76
 ENV SFTP_USER=vd.com.ar_6lq2mbft7aw
-ENV SFTP_PASSWORD=aB6_o?kc2JlcSu5ol
+ENV SFTP_PASSWORD=gL5&BKsfpf2&sic5
 ENV SFTP_PORT=22
 ENV SFTP_TIMEOUT=30000
 
@@ -384,8 +384,8 @@ CMD ["node", "dist/index.js"]
 # docker save -o yaguar-sync.tar joelnicolass/yaguar-sync
 
 # amd64
-#docker buildx build --platform linux/amd64 -t yaguar-sync:amd64 --load .
-#docker save -o yaguar-sync_amd64.tar yaguar-sync:amd64
+# docker buildx build --platform linux/amd64 -t yaguar-sync:amd64 --load .
+# docker save -o yaguar-sync_amd64.tar yaguar-sync:amd64
 
 # arm64
 # docker buildx build --platform linux/arm64 -t yaguar-sync:arm64 --load .
