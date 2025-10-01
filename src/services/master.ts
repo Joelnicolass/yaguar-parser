@@ -289,7 +289,9 @@ function initializeSucursalInstance(
   return wooInstance;
 }
 
-function getWooCommerceInstance(sucursalId: number): WooCommerceRestApi | null {
+export function getWooCommerceInstance(
+  sucursalId: number
+): WooCommerceRestApi | null {
   return initializeSucursalInstance(sucursalId);
 }
 
@@ -462,16 +464,31 @@ async function getAllExistingSkus(
 // Nueva función optimizada para obtener productos existentes con precios para comparación
 async function getAllExistingProductsWithPrices(
   wooInstance: WooCommerceRestApi
-): Promise<Map<string, { id: number; regular_price: string; name: string }>> {
+): Promise<
+  Map<
+    string,
+    {
+      id: number;
+      regular_price: string;
+      name: string;
+      categories: Array<{ id: number }>;
+    }
+  >
+> {
   const existingProducts = new Map<
     string,
-    { id: number; regular_price: string; name: string }
+    {
+      id: number;
+      regular_price: string;
+      name: string;
+      categories: Array<{ id: number }>;
+    }
   >();
   let page = 1;
   const perPage = CONFIG.BATCH_SIZES.PAGINACION_SKUS;
 
   console.log(
-    `🔍 Obteniendo productos existentes con precios para comparación...`
+    `🔍 Obteniendo productos existentes con precios y categorías para comparación...`
   );
 
   try {
@@ -479,7 +496,7 @@ async function getAllExistingProductsWithPrices(
       const response = await wooInstance.get("products", {
         per_page: perPage,
         page,
-        _fields: CONFIG.OPTIMIZATION.PRICE_COMPARISON_FIELDS, // Obtener campos necesarios para comparación
+        _fields: `${CONFIG.OPTIMIZATION.PRICE_COMPARISON_FIELDS},categories`, // ✅ Incluir categorías
       });
 
       const products = response.data;
@@ -491,12 +508,13 @@ async function getAllExistingProductsWithPrices(
             id: product.id,
             regular_price: product.regular_price || "0",
             name: product.name || "",
+            categories: product.categories || [], // ✅ Preservar categorías existentes
           });
         }
       });
 
       console.log(
-        `📄 Página ${page}: ${products.length} productos, ${existingProducts.size} productos con precios acumulados`
+        `📄 Página ${page}: ${products.length} productos, ${existingProducts.size} productos con precios y categorías acumulados`
       );
       page++;
 
@@ -507,13 +525,13 @@ async function getAllExistingProductsWithPrices(
     }
   } catch (error) {
     console.warn(
-      `⚠️ Error obteniendo productos existentes con precios:`,
+      `⚠️ Error obteniendo productos existentes con precios y categorías:`,
       error
     );
   }
 
   console.log(
-    `✅ Total productos con precios encontrados: ${existingProducts.size}`
+    `✅ Total productos con precios y categorías encontrados: ${existingProducts.size}`
   );
   return existingProducts;
 }
@@ -1037,20 +1055,26 @@ async function processSingleUpdateBatch(
 
   while (retryCount < maxRetries && !batchSuccess) {
     try {
-      // Buscar IDs en paralelo con límite
+      // Buscar productos existentes incluyendo sus categorías
       const searchPromises = batch.map(async (product) => {
         try {
           const searchResponse = await wooInstance.get("products", {
             sku: product.sku,
             per_page: 1,
+            _fields: "id,categories", // ✅ Obtener ID y categorías existentes
           });
 
           if (searchResponse.data && searchResponse.data.length > 0) {
             const existingProduct = searchResponse.data[0];
-            return {
+            // ✅ PRESERVAR categorías existentes durante actualización
+            const updatedProduct = {
               id: existingProduct.id,
               ...product,
+              categories: existingProduct.categories || [], // ✅ Mantener categorías existentes
             };
+            // Remover SKU del producto para actualización
+            const { sku, ...productForUpdate } = updatedProduct;
+            return productForUpdate;
           }
           return null;
         } catch (searchError) {
@@ -1090,15 +1114,9 @@ async function processSingleUpdateBatch(
       const validUpdates = allResults.filter((p) => p !== null);
 
       if (validUpdates.length > 0) {
-        // Preparar productos para actualización (remover SKU)
-        const updateData = validUpdates.map((product) => {
-          const { sku, ...productWithoutSku } = product!;
-          return productWithoutSku;
-        });
-
         // Actualizar usando batch API
         const updateResponse = await wooInstance.post("products/batch", {
-          update: updateData,
+          update: validUpdates,
         });
 
         const responseTime = Date.now() - batchStartTime;
@@ -1122,9 +1140,14 @@ async function processSingleUpdateBatch(
                 product.id > 0
               ) {
                 uploadedCount++;
+                console.log(
+                  `✅ Producto actualizado preservando categorías: SKU ${
+                    batch[index]?.sku || "unknown"
+                  }`
+                );
               } else {
                 failedCount++;
-                const originalProduct = validUpdates[index];
+                const originalProduct = batch[index];
                 if (originalProduct) {
                   errors.push(
                     `SKU ${originalProduct.sku}: Error en actualización`
@@ -1138,7 +1161,7 @@ async function processSingleUpdateBatch(
           if (batchResult.error && batchResult.error.length > 0) {
             batchResult.error.forEach((error: any, index: number) => {
               const originalProduct =
-                validUpdates[index + (batchResult.update?.length || 0)];
+                batch[index + (batchResult.update?.length || 0)];
               if (originalProduct) {
                 failedCount++;
                 errors.push(
@@ -1672,16 +1695,37 @@ function convertToWooCommerceFormat(
     const cleanShortDescription = producto.short_description.trim();
     const productName = cleanDescription || cleanShortDescription || "";
     const imageUrl = `${CONFIG.URLS.IMAGE_BASE_URL}${producto.sku}.png`;
-    const categoriaDefault = CATEGORIAS_POR_ID[producto.meta_data];
-    const categoriaWoocommerce = Object.values(
-      CATEGORIAS_POR_ID_AUTOPISTA
-    ).find(
-      (cat) =>
-        cat.name.toLowerCase() === categoriaDefault?.name.trim().toLowerCase()
+
+    // ir a buscar la categoria al categoryMappers/{sku}.json
+    const categoriesMapperPath = path.join(
+      process.cwd(),
+      "categoryMappers",
+      `${producto.sku}.json`
     );
-    const categories: Array<{ id: number }> = categoriaWoocommerce
-      ? [{ id: categoriaWoocommerce.id }]
-      : [];
+    let categories: Array<{ id: number }> = [];
+
+    if (fs.existsSync(categoriesMapperPath)) {
+      try {
+        const categoryFileContent = fs.readFileSync(
+          categoriesMapperPath,
+          "utf-8"
+        );
+
+        const categoryData = JSON.parse(categoryFileContent);
+
+        if (categoryData && categoryData.categoryMap) {
+          const mappedCategoryId = categoryData.categoryMap[producto.sku];
+          if (mappedCategoryId) {
+            categories.push({ id: mappedCategoryId });
+          }
+        }
+      } catch (err) {
+        console.error(
+          `❌ Error leyendo mapeo de categorías para SKU ${producto.sku}:`,
+          err
+        );
+      }
+    }
 
     return {
       sku: `${producto.sku}`,
@@ -1689,7 +1733,7 @@ function convertToWooCommerceFormat(
       regular_price: `${producto.regular_price}`,
       description: cleanDescription,
       short_description: cleanShortDescription,
-      categories,
+      categories: categories,
       type: CONFIG.WOOCOMMERCE.PRODUCT_TYPE,
       status: CONFIG.WOOCOMMERCE.PRODUCT_STATUS,
       stock_status: CONFIG.WOOCOMMERCE.STOCK_STATUS,
