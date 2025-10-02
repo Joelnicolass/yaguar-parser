@@ -1566,7 +1566,9 @@ async function uploadProductsFromSucursalJson(jsonFilePath: string): Promise<{
       newProducts.forEach((product) => {
         const imageUrl = product.images[0]?.src;
         if (imageUrl && !imageResults.get(imageUrl)) {
-          product.images = [{ src: CONFIG.URLS.FALLBACK_IMAGE }];
+          product.images = [
+            /* { src: CONFIG.URLS.FALLBACK_IMAGE } -> SIN IMAGEN POR DEFECTO */
+          ];
         }
       });
       console.log(`✅ Verificación de imágenes completada`);
