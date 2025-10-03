@@ -209,18 +209,67 @@ export class SucursalService {
       //`https://shop.yaguar.com.ar/common/img/Productos/${producto.sku}/250x250.jpg`;
 
       // Filtrar categorías para evitar 'undefined'
-      const categoriaDefault = CATEGORIAS_POR_ID[producto.meta_data];
+      // const categoriaDefault = CATEGORIAS_POR_ID[producto.meta_data];
+
+      // leer las categorias de cada producto por sku, en el archivo productos_converted.json
+      // buscar la categoria correspondiente por SKU, si existe, guardar ese name de categoria y
+      // buscar en el archivo temp/sucursal_{sucursalId}_categorias_existentes.json por name de categoria.
+      const categoriasExistentes = JSON.parse(
+        fs.readFileSync(
+          path.join(__dirname, `productos_converted.json`),
+          "utf8"
+        )
+      );
+      const categoriasSucursal: {
+        id: number;
+        name: string;
+        slug: string;
+        parent: number;
+      }[] = JSON.parse(
+        fs.readFileSync(
+          path.join(
+            __dirname,
+            `temp/sucursal_${sucursalInfo.id}_categorias_existentes.json`
+          ),
+          "utf8"
+        )
+      );
+      const categoria = categoriasExistentes.find(
+        (cat: { sku: string; name: string }) => Number(cat.sku) === producto.sku
+      );
+      if (!categoria) {
+        logger.warn(
+          "Categoría no encontrada para producto, se asignará categoría por defecto",
+          {
+            sku: producto.sku,
+          }
+        );
+      }
+      const categoriaProductoSucursal = categoriasSucursal.find(
+        (cat) => cat.name === categoria?.name
+      );
+
+      if (!categoriaProductoSucursal) {
+        logger.warn(
+          "Categoría existente no encontrada en WooCommerce para producto, se asignará categoría por defecto",
+          {
+            sku: producto.sku,
+            categoria: categoria?.name,
+          }
+        );
+      }
+
       // Realizar una busqueda de la categoria por nombre en el objeto categorias_por_id_autopista
       // Si no se encuentra, asignar una categoría por defecto (ID 999)
-      const categoriaWoocommerce = Object.values(
-        CATEGORIAS_POR_ID_AUTOPISTA
-      ).find(
-        (cat) =>
-          cat.name.toLowerCase() === categoriaDefault?.name.trim().toLowerCase()
-      );
-      const categories: Array<{ id: number }> = categoriaWoocommerce
-        ? [{ id: categoriaWoocommerce.id }]
-        : [];
+      // const categoriaWoocommerce = Object.values(
+      //   CATEGORIAS_POR_ID_AUTOPISTA
+      // ).find(
+      //   (cat) =>
+      //     cat.name.toLowerCase() === categoriaDefault?.name.trim().toLowerCase()
+      // );
+      // const categories: Array<{ id: number }> = categoriaWoocommerce
+      //   ? [{ id: categoriaWoocommerce.id }]
+      //   : [];
 
       return {
         sku: `${producto.sku}`,
@@ -228,7 +277,9 @@ export class SucursalService {
         regular_price: `${producto.regular_price}`,
         description: cleanDescription,
         short_description: cleanShortDescription,
-        categories,
+        categories: categoriaProductoSucursal
+          ? [{ id: categoriaProductoSucursal.id }]
+          : [],
         type: "simple",
         status: "publish",
         stock_status: "instock",
