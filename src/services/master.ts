@@ -9,6 +9,8 @@ import {
   CATEGORIAS_POR_ID_AUTOPISTA,
 } from "../config/categorias_referencia";
 import { SucursalData, SucursalProduct } from "../types";
+import { obtenerCategoriasExistentes } from "./master_helpers";
+import logger from "../utils/logger";
 
 // ✅ CONFIGURACIÓN CENTRALIZADA - Leer desde variables de entorno
 const CONFIG = {
@@ -1763,44 +1765,57 @@ function convertToWooCommerceFormat(
     const cleanShortDescription = producto.short_description.trim();
     const productName = cleanDescription || cleanShortDescription || "";
     const imageUrl = `${CONFIG.URLS.IMAGE_BASE_URL}${producto.sku}.png`;
-
-    // ir a buscar la categoria al categoryMappers/{sku}.json
-    const categoriesMapperPath = path.join(
-      process.cwd(),
-      "categoryMappers",
-      `${sucursalInfo.id}.json`
+    let categoriaProductoSucursal;
+    const categoriasExistentes: [
+      { sku: string; name: string; categoria?: string }
+    ] = JSON.parse(
+      fs.readFileSync(
+        path.join(process.cwd(), `productos_converted.json`),
+        "utf8"
+      )
     );
-
-    console.log(`🔍 Buscando mapeo de categoría en: ${categoriesMapperPath}`);
-
-    let categories: Array<{ id: number }> = [];
-
-    if (fs.existsSync(categoriesMapperPath)) {
-      try {
-        const categoryFileContent = fs.readFileSync(
-          categoriesMapperPath,
-          "utf-8"
-        );
-
-        const categoryData = JSON.parse(categoryFileContent);
-
-        if (categoryData && categoryData.categoryMap) {
-          const mappedCategoryId = categoryData.categoryMap[producto.sku];
-          if (mappedCategoryId) {
-            categories.push({ id: mappedCategoryId });
-          }
+    const categoriasSucursal: {
+      id: number;
+      name: string;
+      slug: string;
+      parent: number;
+    }[] = JSON.parse(
+      fs.readFileSync(
+        path.join(
+          process.cwd(),
+          `temp/sucursal_${sucursalInfo.id}_categorias_existentes.json`
+        ),
+        "utf8"
+      )
+    );
+    const categoria = categoriasExistentes.find(
+      (cat: { sku: string; name: string }) => cat.sku == (producto.sku as any)
+    );
+    if (!categoria) {
+      logger.warn(
+        "Categoría no encontrada para producto, se asignará categoría por defecto",
+        {
+          sku: producto.sku,
         }
-      } catch (err) {
-        console.error(
-          `❌ Error leyendo mapeo de categorías para SKU ${producto.sku}:`,
-          err
+      );
+    } else {
+      categoriaProductoSucursal = categoriasSucursal.find(
+        (cat) => cat.name === categoria.categoria
+      );
+      if (!categoriaProductoSucursal) {
+        logger.warn(
+          "Categoría existente no encontrada en WooCommerce para producto, se asignará categoría por defecto",
+          {
+            sku: producto.sku,
+            categoria: categoria || "No definida",
+          }
         );
       }
     }
 
     console.log(
       `📂 Categorías asignadas para SKU ${producto.sku}:`,
-      categories
+      categoriaProductoSucursal ? categoriaProductoSucursal.name : "No definida"
     );
 
     return {
@@ -1809,7 +1824,9 @@ function convertToWooCommerceFormat(
       regular_price: `${producto.regular_price}`,
       description: cleanDescription,
       short_description: cleanShortDescription,
-      categories: categories,
+      categories: categoriaProductoSucursal
+        ? [{ id: categoriaProductoSucursal.id }]
+        : [],
       type: CONFIG.WOOCOMMERCE.PRODUCT_TYPE,
       status: CONFIG.WOOCOMMERCE.PRODUCT_STATUS,
       stock_status: CONFIG.WOOCOMMERCE.STOCK_STATUS,

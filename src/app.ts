@@ -26,11 +26,7 @@ import logger from "./utils/logger";
 import routes from "./routes";
 import { SchedulerService } from "./services/scheduler/scheduler_service";
 import { executeDelete, executeUpload } from "./services/master";
-import {
-  createSingleProductForTesting,
-  getAllProductsWithCategories,
-  obtenerCategoriasExistentes,
-} from "./services/master_helpers";
+import { obtenerCategoriasExistentes } from "./services/master_helpers";
 
 const app = express();
 
@@ -122,27 +118,27 @@ const startServer = async () => {
         //executeUpload();
         //await executeDelete(10);
 
-        /*      const sucursalesId = [
+        const sucursalesId = [
           2, 3, 4, 5, 6, 8, 9, 10, 12, 13, 14, 15, 16, 18, 19, 20, 21, 22, 23,
           24,
-          ];
-          
-          for (const sucursalId of sucursalesId) {
-            await getAllProductsWithCategories(sucursalId);
-            }
-            */
-        /*  await createSingleProductForTesting(21, {
-          name: "Producto de prueba desde API",
-          sku: "TEST-API-001",
-          regular_price: "19.99",
-          description:
-            "Este es un producto de prueba creado desde la API para la sucursal 2.",
-          short_description: "Producto de prueba API",
-          categoryId: 137,
-        }); */
+        ];
 
-        // await executeUpload();
-        await obtenerCategoriasExistentes(21);
+        for (const sucursalId of sucursalesId) {
+          // await getAllProductsWithCategories(sucursalId);
+          await obtenerCategoriasExistentes(sucursalId);
+        }
+
+        /* await createSingleProductForTesting(2, {
+            name: "Producto de prueba desde API",
+            sku: "TEST-API-001",
+            regular_price: "19.99",
+            description:
+            "Este es un producto de prueba creado desde la API para la sucursal 2.",
+            short_description: "Producto de prueba API",
+            categoryId: 198,
+            }); */
+
+        await executeUpload();
         logger.info("✅ Sistema de cron jobs inicializado y activado");
       } catch (error) {
         logger.error("❌ Error al inicializar sistema de cron jobs:", error);
