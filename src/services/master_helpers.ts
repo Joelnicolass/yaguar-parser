@@ -80,7 +80,7 @@ export const getAllProductsWithCategories = async (
   const perPage = 100; // Obtener 100 productos por página
   let hasMoreProducts = true;
 
-  const testMode = false;
+  const testMode = true;
   const maxPages = testMode ? 2 : Infinity; // Limitar a 2 páginas en modo test
 
   try {

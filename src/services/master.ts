@@ -446,6 +446,7 @@ async function getAllExistingSkus(
       console.log(
         `📄 Página ${page}: ${products.length} productos, ${existingSkus.size} SKUs únicos acumulados`
       );
+
       page++;
 
       // Delay pequeño para no saturar
@@ -472,6 +473,7 @@ async function getAllExistingProductsWithPrices(
       regular_price: string;
       name: string;
       categories: Array<{ id: number }>;
+      images?: Array<{ src: string }>;
     }
   >
 > {
@@ -482,6 +484,7 @@ async function getAllExistingProductsWithPrices(
       regular_price: string;
       name: string;
       categories: Array<{ id: number }>;
+      images?: Array<{ src: string }>;
     }
   >();
   let page = 1;
@@ -496,7 +499,7 @@ async function getAllExistingProductsWithPrices(
       const response = await wooInstance.get("products", {
         per_page: perPage,
         page,
-        _fields: `${CONFIG.OPTIMIZATION.PRICE_COMPARISON_FIELDS},categories`, // ✅ Incluir categorías
+        _fields: `${CONFIG.OPTIMIZATION.PRICE_COMPARISON_FIELDS},categories,images`,
       });
 
       const products = response.data;
@@ -508,7 +511,8 @@ async function getAllExistingProductsWithPrices(
             id: product.id,
             regular_price: product.regular_price || "0",
             name: product.name || "",
-            categories: product.categories || [], // ✅ Preservar categorías existentes
+            categories: product.categories || [],
+            images: product.images || [],
           });
         }
       });
@@ -516,6 +520,8 @@ async function getAllExistingProductsWithPrices(
       console.log(
         `📄 Página ${page}: ${products.length} productos, ${existingProducts.size} productos con precios y categorías acumulados`
       );
+
+      break; // PARA TESTING
       page++;
 
       // Delay pequeño para no saturar
@@ -681,6 +687,8 @@ async function processBatchesInParallel(
               globalBatchIndex + 1
             }: ${uploadedCount} exitosos, ${failedCount} fallidos`
           );
+
+          console.log("ERROR: ", JSON.stringify(errors, null, 2));
         } else {
           console.error(
             `❌ Error en batch ${globalBatchIndex + 1}:`,
@@ -759,6 +767,8 @@ async function processSingleBatch(
       const response = await wooInstance.post("products/batch", {
         create: batch,
       });
+
+      console.log("response: ", JSON.stringify(response.data, null, 2));
 
       const responseTime = Date.now() - batchStartTime;
       console.log(
@@ -1479,7 +1489,13 @@ async function uploadProductsFromSucursalJson(jsonFilePath: string): Promise<{
     // OPTIMIZACIÓN MEJORADA: Obtener productos existentes con precios para comparación inteligente
     let existingProductsWithPrices = new Map<
       string,
-      { id: number; regular_price: string; name: string }
+      {
+        id: number;
+        regular_price: string;
+        name: string;
+        categories?: any[];
+        images?: any[];
+      }
     >();
     let skippedCount = 0;
 
@@ -1557,20 +1573,40 @@ async function uploadProductsFromSucursalJson(jsonFilePath: string): Promise<{
       const imageUrls = newProducts
         .map((p) => p.images[0]?.src)
         .filter((url): url is string => Boolean(url));
+
       const imageResults = await verifyImagesInBatch(
         imageUrls,
         CONFIG.CONCURRENCY.IMAGENES_PARALELAS
       );
 
+      console.log(`✅ Verificación de imágenes completada`);
+      console.log("imageResults: ", imageResults);
+
       // Actualizar productos con imagen de fallback si es necesario
       newProducts.forEach((product) => {
         const imageUrl = product.images[0]?.src;
+
         if (imageUrl && !imageResults.get(imageUrl)) {
-          product.images = [
-            /* { src: CONFIG.URLS.FALLBACK_IMAGE } -> SIN IMAGEN POR DEFECTO */
-          ];
+          console.log(
+            `❌ Imagen no encontrada o inaccesible para SKU ${product.sku}, aplicando fallback`
+          );
+
+          const includesInvalidImage = product.images.some(
+            (img) => img.src === imageUrl
+          );
+
+          if (includesInvalidImage) {
+            product.images = product.images.filter(
+              (img) => img.src !== imageUrl
+            );
+          }
+
+          if (product.images.length === 0) {
+            product.images = undefined as any;
+          }
         }
       });
+
       console.log(`✅ Verificación de imágenes completada`);
     }
 
@@ -1621,11 +1657,41 @@ async function uploadProductsFromSucursalJson(jsonFilePath: string): Promise<{
         CONFIG.CONCURRENCY.IMAGENES_PARALELAS
       );
 
+      console.log(`✅ Verificación de imágenes para duplicados completada`);
+      console.log("duplicateImageResults: ", duplicateImageResults);
+
       // Actualizar productos con imagen de fallback si es necesario
       productsToUpdate.forEach((product) => {
+        const originalProduct = existingProductsWithPrices.get(product.sku);
+        const originalImage = originalProduct?.images?.[0]?.src;
         const imageUrl = product.images[0]?.src;
-        if (imageUrl && !duplicateImageResults.get(imageUrl)) {
-          product.images = [{ src: CONFIG.URLS.FALLBACK_IMAGE }];
+
+        // si la imagen nueva es valida, mantenerla
+        if (imageUrl && duplicateImageResults.get(imageUrl)) {
+          return;
+        }
+
+        // si la imagen nueva no es valida, pero la original si, mantener la original
+        if (originalImage && duplicateImageResults.get(originalImage)) {
+          product.images = [{ src: originalImage }];
+          return;
+        }
+
+        // si ninguna es valida, quitar la imagen
+        console.log(
+          `❌ Imagen no encontrada o inaccesible para SKU ${product.sku} en actualización, aplicando fallback`
+        );
+
+        const includesInvalidImage = product.images.some(
+          (img) => img.src === imageUrl
+        );
+
+        if (includesInvalidImage) {
+          product.images = product.images.filter((img) => img.src !== imageUrl);
+        }
+
+        if (product.images.length === 0) {
+          product.images = undefined as any;
         }
       });
 
@@ -1702,8 +1768,11 @@ function convertToWooCommerceFormat(
     const categoriesMapperPath = path.join(
       process.cwd(),
       "categoryMappers",
-      `${producto.sku}.json`
+      `${sucursalInfo.id}.json`
     );
+
+    console.log(`🔍 Buscando mapeo de categoría en: ${categoriesMapperPath}`);
+
     let categories: Array<{ id: number }> = [];
 
     if (fs.existsSync(categoriesMapperPath)) {
@@ -1728,6 +1797,11 @@ function convertToWooCommerceFormat(
         );
       }
     }
+
+    console.log(
+      `📂 Categorías asignadas para SKU ${producto.sku}:`,
+      categories
+    );
 
     return {
       sku: `${producto.sku}`,
