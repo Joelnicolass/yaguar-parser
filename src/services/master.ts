@@ -326,8 +326,6 @@ export async function executeUpload(): Promise<void> {
     const result = await uploadProductsFromMultipleSucursales(
       downloadedJsonFiles
     );
-
-    console.log(JSON.stringify(result, null, 2));
   } catch (error) {
     throw error;
   } finally {
@@ -341,7 +339,6 @@ export async function executeDelete(sucursalId: number): Promise<void> {
   const startTime = Date.now();
   try {
     const result = await deleteAllProductsFromSucursal(sucursalId);
-    console.log(JSON.stringify(result, null, 2));
   } catch (error) {
     throw error;
   } finally {
@@ -689,8 +686,6 @@ async function processBatchesInParallel(
               globalBatchIndex + 1
             }: ${uploadedCount} exitosos, ${failedCount} fallidos`
           );
-
-          console.log("ERROR: ", JSON.stringify(errors, null, 2));
         } else {
           console.error(
             `❌ Error en batch ${globalBatchIndex + 1}:`,
@@ -769,8 +764,6 @@ async function processSingleBatch(
       const response = await wooInstance.post("products/batch", {
         create: batch,
       });
-
-      console.log("response: ", JSON.stringify(response.data, null, 2));
 
       const responseTime = Date.now() - batchStartTime;
       console.log(
@@ -1589,10 +1582,6 @@ async function uploadProductsFromSucursalJson(jsonFilePath: string): Promise<{
         const imageUrl = product.images[0]?.src;
 
         if (imageUrl && !imageResults.get(imageUrl)) {
-          console.log(
-            `❌ Imagen no encontrada o inaccesible para SKU ${product.sku}, aplicando fallback`
-          );
-
           const includesInvalidImage = product.images.some(
             (img) => img.src === imageUrl
           );
@@ -1812,11 +1801,6 @@ function convertToWooCommerceFormat(
         );
       }
     }
-
-    console.log(
-      `📂 Categorías asignadas para SKU ${producto.sku}:`,
-      categoriaProductoSucursal ? categoriaProductoSucursal.name : "No definida"
-    );
 
     return {
       sku: `${producto.sku}`,

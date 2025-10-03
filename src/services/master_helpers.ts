@@ -190,10 +190,6 @@ export const obtenerCategoriasExistentes = async (
     }
     logger.info(`✅ Categorías obtenidas: ${allCategories.length}`);
 
-    logger.info(
-      `📋 Datos de categorías: ${JSON.stringify(allCategories, null, 2)}`
-    );
-
     // crear un archivo json en la carpeta temp con los datos de categories
     const tempDir = path.resolve(process.cwd(), "temp");
     if (!fs.existsSync(tempDir)) {
