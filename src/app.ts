@@ -29,6 +29,7 @@ import { executeDelete, executeUpload } from "./services/master";
 import {
   createSingleProductForTesting,
   getAllProductsWithCategories,
+  obtenerCategoriasExistentes,
 } from "./services/master_helpers";
 
 const app = express();
@@ -140,7 +141,8 @@ const startServer = async () => {
             categoryId: 198,
             }); */
 
-        await executeUpload();
+        // await executeUpload();
+        await obtenerCategoriasExistentes(21);
         logger.info("✅ Sistema de cron jobs inicializado y activado");
       } catch (error) {
         logger.error("❌ Error al inicializar sistema de cron jobs:", error);

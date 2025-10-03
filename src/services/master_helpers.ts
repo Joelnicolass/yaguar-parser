@@ -2,6 +2,7 @@ import WooCommerceRestApi from "@woocommerce/woocommerce-rest-api";
 import { getCredencialesSucursal } from "../config/sucursales_credenciales";
 import fs from "fs";
 import path from "path";
+import logger from "../utils/logger";
 
 interface ProductWithCategories {
   id: number;
@@ -146,6 +147,69 @@ export const getAllProductsWithCategories = async (
     return allProducts;
   } catch (error) {
     console.error(`❌ Error obteniendo productos:`, error);
+    throw error;
+  }
+};
+
+// replicar la funcion obtenerCategoriasExistentes
+export const obtenerCategoriasExistentes = async (
+  sucursalId: number
+): Promise<void> => {
+  console.log(
+    `🔍 Obteniendo todas las categorías existentes para sucursal ${sucursalId}...`
+  );
+  try {
+    const wooInstance = initializeSucursalInstance(sucursalId);
+    if (!wooInstance) {
+      throw new Error(
+        `No se pudo inicializar WooCommerce para sucursal ${sucursalId}`
+      );
+    }
+
+    // Obtener todas las categorías  de los productos, recorriendo las páginas si es necesario
+    // realizar un mapeado de paginados
+    const allCategories: any[] = [];
+    let page = 1;
+    const perPage = 100;
+    let hasMoreCategories = true;
+
+    while (hasMoreCategories) {
+      const response = await wooInstance.get("products/categories", {
+        per_page: 100, // máximo permitido por WooCommerce
+        page,
+        hide_empty: false, // incluir categorías vacías
+        _fields: "id,name,slug,parent", // solo los campos necesarios
+      });
+
+      if (response.data && response.data.length > 0) {
+        allCategories.push(...response.data);
+        page++;
+      } else {
+        hasMoreCategories = false;
+      }
+    }
+    logger.info(`✅ Categorías obtenidas: ${allCategories.length}`);
+
+    logger.info(
+      `📋 Datos de categorías: ${JSON.stringify(allCategories, null, 2)}`
+    );
+
+    // crear un archivo json en la carpeta temp con los datos de categories
+    const tempDir = path.resolve(process.cwd(), "temp");
+    if (!fs.existsSync(tempDir)) {
+      fs.mkdirSync(tempDir, { recursive: true });
+    }
+    const filePath = path.resolve(
+      tempDir,
+      `sucursal_${sucursalId}_categorias_existentes.json`
+    );
+    await fs.promises.writeFile(
+      filePath,
+      JSON.stringify(allCategories, null, 2)
+    );
+    logger.info(`📁 Archivo guardado: ${filePath}`);
+  } catch (error) {
+    logger.error(`❌ Error obteniendo categorías:`, error);
     throw error;
   }
 };
