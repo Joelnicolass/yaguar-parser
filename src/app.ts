@@ -131,15 +131,15 @@ const startServer = async () => {
             await getAllProductsWithCategories(sucursalId);
             }
             */
-        /* await createSingleProductForTesting(2, {
-            name: "Producto de prueba desde API",
-            sku: "TEST-API-001",
-            regular_price: "19.99",
-            description:
+        /*  await createSingleProductForTesting(21, {
+          name: "Producto de prueba desde API",
+          sku: "TEST-API-001",
+          regular_price: "19.99",
+          description:
             "Este es un producto de prueba creado desde la API para la sucursal 2.",
-            short_description: "Producto de prueba API",
-            categoryId: 198,
-            }); */
+          short_description: "Producto de prueba API",
+          categoryId: 137,
+        }); */
 
         // await executeUpload();
         await obtenerCategoriasExistentes(21);

@@ -24,7 +24,7 @@ export interface SucursalCredenciales {
  * antes de usar en producción.
  */
 export const SUCURSALES_CREDENCIALES: Record<number, SucursalCredenciales> = {
-  2: {
+  /*  2: {
     nombre: process.env.WOOCOMMERCE_TIGRE_NOMBRE || "Tigre",
     credenciales: {
       sucursal_id: parseInt(process.env.WOOCOMMERCE_TIGRE_SUCURSAL_ID || "2"),
@@ -223,7 +223,7 @@ export const SUCURSALES_CREDENCIALES: Record<number, SucursalCredenciales> = {
         process.env.WOOCOMMERCE_GRALROCA_SECRET || "cs_gralroca_secret",
       version: process.env.WOOCOMMERCE_VERSION || "wc/v3",
     },
-  },
+  }, */
   21: {
     nombre: process.env.WOOCOMMERCE_POSADAS_NOMBRE || "Posadas",
     credenciales: {
@@ -237,7 +237,7 @@ export const SUCURSALES_CREDENCIALES: Record<number, SucursalCredenciales> = {
       version: process.env.WOOCOMMERCE_VERSION || "wc/v3",
     },
   },
-  22: {
+  /*  22: {
     nombre: process.env.WOOCOMMERCE_TRELEW_NOMBRE || "Trelew",
     credenciales: {
       sucursal_id: parseInt(process.env.WOOCOMMERCE_TRELEW_SUCURSAL_ID || "22"),
@@ -270,7 +270,7 @@ export const SUCURSALES_CREDENCIALES: Record<number, SucursalCredenciales> = {
         process.env.WOOCOMMERCE_CHACABUCO_SECRET || "cs_chacabuco_secret",
       version: process.env.WOOCOMMERCE_VERSION || "wc/v3",
     },
-  },
+  }, */
 };
 
 /**
@@ -301,7 +301,7 @@ export function getAllSucursales(): SucursalCredenciales[] {
  * Para facilitar la identificación por nombre de archivo
  */
 export const ARCHIVO_A_SUCURSAL_ID: Record<string, number> = {
-  "productos_sucursal_autopista.json": 10,
+  /* "productos_sucursal_autopista.json": 10,
   "productos_sucursal_bahiablanca.json": 13,
   "productos_sucursal_campana.json": 3,
   "productos_sucursal_chacabuco.json": 24,
@@ -314,13 +314,13 @@ export const ARCHIVO_A_SUCURSAL_ID: Record<string, number> = {
   "productos_sucursal_maschwitz.json": 19,
   "productos_sucursal_mendoza.json": 14,
   "productos_sucursal_moreno.json": 18,
-  "productos_sucursal_neuquen.json": 8,
+  "productos_sucursal_neuquen.json": 8, */
   "productos_sucursal_posadas.json": 21,
-  "productos_sucursal_salta.json": 9,
+  /*  "productos_sucursal_salta.json": 9 
   "productos_sucursal_sanjuan.json": 16,
   "productos_sucursal_santafe.json": 5,
   "productos_sucursal_trelew.json": 22,
-  "productos_sucursal_tigre.json": 2,
+  "productos_sucursal_tigre.json": 2,, */
 };
 
 export const SUCURSAL_ID_A_ARCHIVO: Record<number, string> = Object.entries(
