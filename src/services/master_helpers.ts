@@ -160,6 +160,10 @@ export const obtenerCategoriasExistentes = async (
   );
   try {
     const wooInstance = initializeSucursalInstance(sucursalId);
+    logger.info(
+      `🔍 Instancia WooCommerce inicializada para sucursal ${sucursalId}`,
+      wooInstance
+    );
     if (!wooInstance) {
       throw new Error(
         `No se pudo inicializar WooCommerce para sucursal ${sucursalId}`
@@ -181,7 +185,9 @@ export const obtenerCategoriasExistentes = async (
         _fields: "id,name,slug,parent", // solo los campos necesarios
       });
 
+      logger.info(`📄 Página ${page} de categorías obtenida`);
       if (response.data && response.data.length > 0) {
+        logger.info(`data: ${JSON.stringify(response.data, null, 2)}`);
         allCategories.push(...response.data);
         page++;
       } else {
@@ -205,8 +211,10 @@ export const obtenerCategoriasExistentes = async (
     );
     logger.info(`📁 Archivo guardado: ${filePath}`);
   } catch (error) {
-    logger.error(`❌ Error obteniendo categorías:`, error);
-    throw error;
+    logger.error(
+      `❌ Error obteniendo categorías:`,
+      JSON.stringify(error, null, 2)
+    );
   }
 };
 
